@@ -1,0 +1,15 @@
+# Dependencies
+app/node_modules/
+
+# Build output
+app/Timeline-darwin-arm64/
+Timeline.app/
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# User data (kept locally, not in repo)
+data/
+team/
+source/

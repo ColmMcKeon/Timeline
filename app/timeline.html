@@ -1,0 +1,3097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Timeline</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  @media print {
+    #titlebar, #controls, #vscroll, #launch-screen, #about-overlay,
+    .modal-overlay, #tooltip, #milestone-warning, #mw-backdrop { display: none !important; }
+    #app { height: 100vh; }
+    #body { flex: 1; height: 100vh; }
+    #header { flex-shrink: 0; }
+    #pdf-report { display: block !important; }
+  }
+
+  #pdf-report {
+    display: none;
+    font-family: Arial, sans-serif;
+    font-size: 11px;
+    color: #222;
+    padding: 28px 36px 36px;
+    background: #fff;
+    page-break-before: always;
+  }
+  #pdf-report h1 { font-size: 20px; font-weight: bold; margin-bottom: 2px; }
+  #pdf-report .pdf-meta { font-size: 10px; color: #666; margin-bottom: 20px; }
+  #pdf-report h2 { font-size: 13px; font-weight: bold; margin: 18px 0 6px; border-bottom: 1.5px solid #ccc; padding-bottom: 3px; color: #1a3a6c; }
+  #pdf-report table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  #pdf-report th { background: #e8eef6; text-align: left; padding: 4px 7px; font-size: 10px; border: 1px solid #ccc; color: #333; }
+  #pdf-report td { padding: 3px 7px; font-size: 10px; border: 1px solid #ddd; vertical-align: top; }
+  #pdf-report tr:nth-child(even) td { background: #f7f9fc; }
+  #pdf-report .no-data { color: #999; font-style: italic; font-size: 10px; }
+
+  html, body {
+    width: 100%; height: 100%;
+    font-family: Arial, sans-serif;
+    font-size: 11px;
+    background: #2b2b2b;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  #app {
+    width: 100%;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: #c8c8c8;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ── TITLE BAR ── */
+  #titlebar {
+    height: 28px;
+    background: linear-gradient(to bottom, #3d3d3d, #2a2a2a);
+    display: flex;
+    align-items: center;
+    /* leave 80px on left for native macOS traffic lights */
+    padding: 0 12px 0 80px;
+    flex-shrink: 0;
+    color: #ddd;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+    -webkit-app-region: drag;
+    gap: 10px;
+  }
+
+  #save-status {
+    font-size: 9px;
+    color: #888;
+    margin-left: auto;
+    font-weight: normal;
+    -webkit-app-region: no-drag;
+  }
+  #save-status.dirty { color: #f0a050; }
+  #save-status.saved { color: #50c050; }
+
+  #info-btn {
+    -webkit-app-region: no-drag;
+    background: none;
+    border: none;
+    color: #aaa;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    border-radius: 50%;
+    transition: color 0.15s;
+  }
+  #info-btn:hover { color: #fff; }
+
+  /* ── ABOUT MODAL ── */
+  /* ── LAUNCH SCREEN ── */
+  #launch-screen {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(160deg, #1e2a3a 0%, #2c3e55 60%, #1a2535 100%);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+  }
+  #launch-screen.hidden { display: none; }
+  #launch-logo {
+    font-size: 42px;
+    margin-bottom: 6px;
+  }
+  #launch-screen h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: #e8eef5;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+  }
+  #launch-screen p.subtitle {
+    font-size: 12px;
+    color: #7a99bb;
+    margin-bottom: 32px;
+    letter-spacing: 1px;
+  }
+  #launch-card {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 28px 32px;
+    width: 420px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  #launch-card h2 {
+    font-size: 13px;
+    color: #9bb5cc;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .project-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.05);
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    color: #d0dce8;
+    font-size: 13px;
+  }
+  .project-item:hover { background: rgba(255,255,255,0.1); }
+  .project-item.selected {
+    background: rgba(80,140,220,0.2);
+    border-color: #4a8cd4;
+    color: #fff;
+  }
+  .project-item .project-icon { font-size: 14px; opacity: 0.35; }
+  .project-item .row-btn {
+    padding: 4px 12px;
+    font-size: 11px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.06);
+    color: #6a8aaa;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .project-item .open-btn  { background: rgba(80,140,220,0.25); color: #7ab0ee; border-color: rgba(80,140,220,0.35); }
+  .project-item .open-btn:hover    { background: rgba(80,140,220,0.45); color: #aad0ff; }
+  .project-item .archive-btn:hover { background: rgba(255,80,80,0.2); color: #ff8888; border-color: rgba(255,80,80,0.3); }
+  .project-item.archived-item { opacity: 0.5; }
+  .project-item.archived-item .archive-btn:hover { background: rgba(80,200,80,0.2); color: #88dd88; border-color: rgba(80,200,80,0.3); }
+  .launch-section-label {
+    font-size: 10px;
+    color: #4a6a8a;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 6px 2px 2px;
+  }
+  #launch-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  #launch-open-btn {
+    flex: 1;
+    padding: 11px;
+    background: #4a8cd4;
+    color: #fff;
+    border: none;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  #launch-open-btn:hover { background: #5a9ce4; }
+  #launch-open-btn:disabled { background: #2a4a6a; color: #5a7a9a; cursor: default; }
+  #launch-browse-btn {
+    flex: 1;
+    padding: 11px;
+    background: rgba(255,255,255,0.08);
+    color: #9bb5cc;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  #launch-browse-btn:hover { background: rgba(255,255,255,0.14); color: #d0dce8; }
+  #launch-new-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  #launch-new-input {
+    flex: 1;
+    padding: 9px 12px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 7px;
+    color: #e8eef5;
+    font-size: 13px;
+    outline: none;
+  }
+  #launch-new-input::placeholder { color: #4a6a8a; }
+  #launch-new-input:focus { border-color: #4a8cd4; }
+  #launch-create-btn {
+    padding: 9px 16px;
+    background: rgba(80,180,100,0.25);
+    color: #88dd99;
+    border: 1px solid rgba(80,180,100,0.35);
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  #launch-create-btn:hover { background: rgba(80,180,100,0.4); }
+  #launch-divider {
+    border: none;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    margin: 4px 0;
+  }
+  #launch-empty {
+    text-align: center;
+    color: #5a7a9a;
+    font-size: 12px;
+    padding: 20px 0;
+  }
+  #launch-loading {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 24px 0 8px;
+    color: #7a99bb;
+    font-size: 13px;
+  }
+  #launch-loading.visible { display: flex; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid rgba(255,255,255,0.1);
+    border-top-color: #4a8cd4;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  #about-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 900;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  #about-overlay.open { display: flex; }
+
+  #about-modal {
+    background: #1e1e2e;
+    color: #ddd;
+    border-radius: 14px;
+    padding: 30px 28px 22px;
+    width: 360px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+    position: relative;
+    font-size: 11px;
+    line-height: 1.6;
+    border: 1px solid #333;
+  }
+
+  #about-close {
+    position: absolute;
+    top: 12px; right: 14px;
+    background: #333;
+    border: none;
+    color: #aaa;
+    border-radius: 50%;
+    width: 22px; height: 22px;
+    cursor: pointer;
+    font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #about-close:hover { background: #555; color: #fff; }
+
+  #about-icon {
+    font-size: 36px;
+    text-align: center;
+    color: #6a9adc;
+    margin-bottom: 6px;
+  }
+
+  #about-modal h2 {
+    text-align: center;
+    font-size: 18px;
+    color: #fff;
+    margin-bottom: 18px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+  }
+
+  .about-section { margin-bottom: 14px; }
+  .about-section h3 {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #6a9adc;
+    margin-bottom: 4px;
+  }
+  .about-section p { color: #bbb; }
+  .about-section code {
+    background: #2a2a3e;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 10px;
+    color: #9ad;
+  }
+
+  #about-footer {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid #333;
+    text-align: center;
+    font-size: 10px;
+    color: #666;
+    line-height: 1.7;
+  }
+  #about-footer strong { color: #999; }
+
+  /* ── HEADER ── */
+  #header {
+    height: 36px;
+    display: flex;
+    flex-shrink: 0;
+    background: #3a5a8c;
+  }
+
+  #corner {
+    width: 150px;
+    flex-shrink: 0;
+    background: #2a4a7c;
+    border-right: 2px solid #1a3a6c;
+    border-bottom: 1px solid #1a3a6c;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: bold;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+  }
+
+  #date-header-wrap {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+  }
+
+  #date-header {
+    display: flex;
+    height: 36px;
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+
+  .date-cell {
+    flex-shrink: 0;
+    height: 36px;
+    border-right: 1px solid #1a3a6c;
+    border-bottom: 1px solid #1a3a6c;
+    color: #fff;
+    font-size: 9px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    background: #3a5a8c;
+    white-space: nowrap;
+    line-height: 1.3;
+  }
+
+  .date-cell .week-num { font-size: 8px; color: #aac; }
+  .date-cell .week-date { font-size: 9px; }
+  .date-cell:hover { background: #4a6a9c; }
+  .date-cell.has-milestone { background: #6a8abc; }
+  .date-cell.milestone-label { font-weight: bold; color: #ffe; }
+
+  /* ── BODY ── */
+  #body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  #people-col {
+    width: 150px;
+    flex-shrink: 0;
+    overflow: hidden;
+    background: #d0d0d0;
+    border-right: 2px solid #999;
+    position: relative;
+  }
+
+  #people-inner {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+  }
+
+  .person-cell {
+    height: 28px;
+    border-bottom: 1px solid #bbb;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    cursor: pointer;
+    color: #222;
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .person-cell:nth-child(odd)  { background: #dcdcdc; }
+  .person-cell:nth-child(even) { background: #e8e8e8; }
+  .person-cell:hover { background: #b8cce8 !important; }
+
+  /* ── TASK GRID ── */
+  #grid-wrap {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+  }
+
+  #grid-canvas {
+    position: absolute;
+    top: 0; left: 0;
+  }
+
+  #tasks-layer {
+    position: absolute;
+    top: 0; left: 0;
+    overflow: hidden;
+  }
+
+  .task-bar {
+    position: absolute;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    font-size: 9px;
+    color: #fff;
+    cursor: pointer;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    border: 1px solid rgba(0,0,0,0.25);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    pointer-events: all;
+  }
+
+  .task-bar:hover { filter: brightness(1.12); outline: 1px solid rgba(255,255,255,0.5); }
+
+  .progress-fill {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    background: rgba(255,255,255,0.28);
+    border-radius: 4px 0 0 4px;
+    pointer-events: none;
+  }
+
+  .task-label {
+    position: relative;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  /* ── CONTROL BAR ── */
+  #controls {
+    background: #b8b8b8;
+    border-top: 2px solid #888;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px;
+    flex-shrink: 0;
+  }
+
+  #ctrl-row1, #ctrl-row2 {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  #controls label {
+    font-size: 13px;
+    color: #333;
+    white-space: nowrap;
+  }
+
+  #controls input[type=text],
+  #controls input[type=date],
+  #controls select {
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+    height: 26px;
+    border: 1px solid #888;
+    background: #fff;
+    padding: 0 5px;
+    border-radius: 3px;
+  }
+
+  #taskInput { width: 160px; }
+  #fromDate  { width: 110px; min-width: 110px; }
+  #toDate    { width: 100px; min-width: 100px; }
+  #jumpDate  { width: 110px; min-width: 110px; }
+  #ctrl-row2 input[type=date] { width: 110px; }
+
+  #controls button {
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+    height: 28px;
+    padding: 0 12px;
+    border: 1px solid #666;
+    border-radius: 4px;
+    cursor: pointer;
+    background: linear-gradient(to bottom, #e8e8e8, #c8c8c8);
+    color: #222;
+    white-space: nowrap;
+  }
+
+  #controls button:hover { background: linear-gradient(to bottom, #f0f0f0, #d8d8d8); }
+  #controls button.primary {
+    background: linear-gradient(to bottom, #5a8acc, #3a6aac);
+    color: #fff;
+    border-color: #2a5a9c;
+  }
+  #controls button.primary:hover { background: linear-gradient(to bottom, #6a9adc, #4a7abc); }
+
+  #hslider { flex: 1; height: 16px; accent-color: #3a6aac; cursor: pointer; }
+
+  .ctrl-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: #f0f2f5;
+    border: 1px solid #c8cdd6;
+    border-radius: 5px;
+    padding: 2px 6px 4px;
+    flex-shrink: 0;
+  }
+  .ctrl-group-label {
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #999;
+    margin-bottom: 3px;
+    white-space: nowrap;
+  }
+  .ctrl-group-body {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* ── VSCROLL ── */
+  #vscroll {
+    width: 14px;
+    flex-shrink: 0;
+    background: #c0c0c0;
+    border-left: 1px solid #999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2px 0;
+    gap: 2px;
+  }
+
+  .vscroll-btn {
+    width: 12px; height: 12px;
+    background: linear-gradient(to bottom, #e0e0e0, #c0c0c0);
+    border: 1px solid #888;
+    border-radius: 2px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    color: #444;
+  }
+  .vscroll-btn:hover { background: linear-gradient(to bottom, #eee, #ccc); }
+
+  /* ── MODALS ── */
+  .modal-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.35);
+    z-index: 100;
+    display: none;
+  }
+  .modal-overlay.active { display: block; }
+
+  .modal {
+    position: absolute;
+    background: #e4e4e4;
+    border: 2px solid #888;
+    border-radius: 4px;
+    box-shadow: 4px 4px 16px rgba(0,0,0,0.4);
+  }
+
+  .modal-title {
+    background: linear-gradient(to bottom, #4a6a9c, #2a4a7c);
+    color: #fff;
+    padding: 5px 8px;
+    font-weight: bold;
+    font-size: 11px;
+    border-radius: 2px 2px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: move;
+  }
+
+  .modal-close { cursor: pointer; font-size: 14px; color: #cce; }
+  .modal-close:hover { color: #fff; }
+
+  .modal-body { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+
+  .form-row { display: flex; align-items: center; gap: 8px; }
+  .form-row label { width: 86px; font-size: 12px; color: #444; text-align: right; flex-shrink: 0; }
+  .form-row input[type=text],
+  .form-row input[type=date],
+  .form-row select,
+  .form-row textarea {
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+    border: 1px solid #888;
+    background: #fff;
+    padding: 4px 6px;
+    border-radius: 3px;
+    flex: 1;
+    height: 26px;
+  }
+  .form-row textarea { resize: vertical; height: 80px; font-size: 13px; line-height: 1.5; }
+
+  .info-badge {
+    font-size: 12px;
+    color: #444;
+    background: #f0f0f0;
+    padding: 5px 8px;
+    border-radius: 3px;
+    border: 1px solid #ddd;
+    flex: 1;
+    min-height: 24px;
+  }
+
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 7px 10px;
+    border-top: 1px solid #bbb;
+  }
+
+  .modal-footer button {
+    font-family: Arial, sans-serif;
+    font-size: 10px;
+    height: 22px;
+    padding: 0 12px;
+    border: 1px solid #666;
+    border-radius: 3px;
+    cursor: pointer;
+    background: linear-gradient(to bottom, #e8e8e8, #c8c8c8);
+    color: #222;
+  }
+  .modal-footer button.primary {
+    background: linear-gradient(to bottom, #5a8acc, #3a6aac);
+    color: #fff;
+    border-color: #2a5a9c;
+  }
+  .modal-footer button:hover { filter: brightness(1.06); }
+  .del-btn { color: #a00 !important; margin-right: auto; }
+
+  /* ── TASK HISTORY LOG ── */
+  #tm_log {
+    height: 120px;
+    overflow-y: scroll;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fafafa;
+    padding: 5px 8px;
+    font-size: 12px;
+    line-height: 1.9;
+    color: #333;
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
+  }
+  .log-row { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .log-row .log-ts  { color: #999; margin-right: 8px; font-size: 11px; }
+  .log-row .arrow   { color: #aaa; margin: 0 4px; }
+  .log-row .field   { font-weight: bold; color: #444; }
+  .log-row .note    { color: #3a6aac; font-style: italic; }
+
+  /* Always-visible scrollbar for history */
+  #tm_log::-webkit-scrollbar       { width: 8px; }
+  #tm_log::-webkit-scrollbar-track { background: #e8e8e8; border-radius: 4px; }
+  #tm_log::-webkit-scrollbar-thumb { background: #aaa; border-radius: 4px; border: 1px solid #e8e8e8; }
+  #tm_log::-webkit-scrollbar-thumb:hover { background: #888; }
+
+/* ── MILESTONE LAYER ── */
+#milestone-layer {
+  position: absolute;
+  top: 0; left: 0;
+  pointer-events: none;
+  z-index: 30;
+}
+.milestone-marker {
+  position: absolute;
+  top: 0;
+  width: 28px;
+  margin-left: -14px;
+  pointer-events: all;
+  cursor: ew-resize;
+}
+.milestone-line {
+  position: absolute;
+  left: 50%;
+  top: 0; bottom: 0;
+  width: 2px;
+  background: #e8b04a;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.milestone-flag {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #e8b04a;
+  color: #fff;
+  font-size: 9px;
+  font-weight: bold;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  cursor: ew-resize;
+  user-select: none;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+.milestone-flag:hover { background: #c89030; }
+
+/* ── MILESTONE WARNING POPUP ── */
+#milestone-warning {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  border: 2px solid #e8a030;
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+  padding: 24px 28px 18px;
+  width: 340px;
+  z-index: 2000;
+  display: none;
+  flex-direction: column;
+  gap: 14px;
+  text-align: center;
+}
+#milestone-warning.visible { display: flex; }
+#milestone-warning .mw-icon { font-size: 28px; }
+#milestone-warning .mw-title { font-size: 14px; font-weight: bold; color: #c07010; }
+#milestone-warning .mw-body  { font-size: 12px; color: #444; line-height: 1.6; }
+#milestone-warning button {
+  align-self: center;
+  padding: 6px 24px;
+  background: #e8a030;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+}
+#milestone-warning button:hover { background: #c07010; }
+#mw-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.3);
+  z-index: 1999;
+  display: none;
+}
+#mw-backdrop.visible { display: block; }
+
+/* ── TOOLTIP ── */
+  #tooltip {
+    position: absolute;
+    background: #ffffcc;
+    border: 1px solid #999;
+    padding: 4px 7px;
+    font-size: 9px;
+    color: #333;
+    border-radius: 3px;
+    pointer-events: none;
+    display: none;
+    z-index: 200;
+    max-width: 220px;
+    white-space: pre;
+    box-shadow: 2px 2px 6px rgba(0,0,0,0.15);
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Title -->
+  <div id="titlebar">
+    Timeline
+    <span id="project-title" style="color:#aac;font-weight:normal;font-size:11px;opacity:0.8;"></span>
+    <span id="save-status"></span>
+    <button id="info-btn" title="About Timeline">&#9432;</button>
+  </div>
+
+  <!-- About modal -->
+  <!-- Launch / Project Picker Screen -->
+  <div id="launch-screen">
+    <div id="launch-logo">📅</div>
+    <h1>TIMELINE</h1>
+    <p class="subtitle">Resource Planner</p>
+    <div id="launch-card">
+      <h2 id="launch-card-title">Select a Project</h2>
+      <div id="launch-project-list"><div id="launch-empty">No projects found in data folder.</div></div>
+      <hr id="launch-divider">
+      <div id="launch-new-row">
+        <input type="text" id="launch-new-input" placeholder="New project name…">
+        <button id="launch-create-btn">+ Create</button>
+      </div>
+      <div id="launch-loading"><div class="spinner"></div><span id="launch-loading-label">Loading…</span></div>
+      <div id="launch-actions">
+        <button id="launch-browse-btn">Browse…</button>
+      </div>
+      <div id="launch-back-wrap" style="display:none;margin-top:8px;">
+        <button id="launch-back-btn" style="width:100%;padding:9px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#8aaecc;font-size:12px;cursor:pointer;">← Back to current project</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="about-overlay">
+    <div id="about-modal">
+      <button id="about-close">✕</button>
+      <div id="about-icon">&#9432;</div>
+      <h2>Timeline</h2>
+      <div class="about-section">
+        <h3>What is this?</h3>
+        <p>A visual resource planner — see who is working on what, and when, across a 52-week timeline.</p>
+      </div>
+      <div class="about-section">
+        <h3>What does it need to run?</h3>
+        <p><strong>Node.js</strong> — the JavaScript runtime.<br>
+           <strong>Electron</strong> — installed automatically via <code>npm install</code>.<br>
+           Launch by double-clicking <strong>Timeline.app</strong>.</p>
+      </div>
+      <div class="about-section">
+        <h3>How is data saved?</h3>
+        <p>Your data is saved as a JSON file at:<br>
+           <code>~/Documents/Timeline/timeline-data.json</code><br>
+           Press <strong>⌘S</strong> or click <strong>Save</strong> to write to disk. On close, you'll be asked to save if there are unsaved changes.</p>
+      </div>
+      <div class="about-section">
+        <h3>Keyboard shortcuts</h3>
+        <p><strong>⌘S</strong> — Save &nbsp;&nbsp; <strong>⌘W</strong> — Close</p>
+      </div>
+      <div id="about-footer">
+        Designed by <strong>Colm McKeon</strong> · based on his original Flash Timeline app<br>
+        Written by <strong>Claude</strong> (Anthropic)
+      </div>
+    </div>
+  </div>
+
+  <!-- Date header -->
+  <div id="header">
+    <div id="corner">
+      <span>Resource</span>
+      <button id="saveTeamBtn" title="Save current people as a team file" style="margin-top:4px;font-size:9px;padding:2px 6px;background:#1a3a6c;border:1px solid #4a7ac0;color:#cde;border-radius:3px;cursor:pointer;white-space:nowrap;">&#128101; Save Team</button>
+    </div>
+    <div id="date-header-wrap">
+      <div id="date-header"></div>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div id="body">
+    <div id="people-col">
+      <div id="people-inner"></div>
+    </div>
+    <div id="grid-wrap">
+      <canvas id="grid-canvas"></canvas>
+      <div id="milestone-layer"></div>
+      <div id="tasks-layer"></div>
+    </div>
+    <div id="vscroll">
+      <div class="vscroll-btn" id="vup">▲</div>
+      <div style="flex:1"></div>
+      <div class="vscroll-btn" id="vdown">▼</div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div id="controls">
+    <div id="ctrl-row1">
+      <!-- Resource -->
+      <div class="ctrl-group">
+        <span class="ctrl-group-label">Resource</span>
+        <div class="ctrl-group-body">
+          <select id="personSel" style="width:120px"></select>
+        </div>
+      </div>
+      <!-- New Task -->
+      <div class="ctrl-group">
+        <span class="ctrl-group-label">New Task</span>
+        <div class="ctrl-group-body">
+          <input type="text" id="taskInput" placeholder="Task name…">
+          <label>From</label><input type="date" id="fromDate">
+          <label>Wks</label><select id="weeksDur" style="width:52px"></select>
+          <label>To</label><input type="date" id="toDate" readonly style="background:#f0f0f0;color:#555;">
+          <button class="primary" id="newTaskBtn">+ Assign</button>
+          <button id="addPersonBtn" style="display:none"></button>
+        </div>
+      </div>
+      <!-- Go To -->
+      <div class="ctrl-group">
+        <span class="ctrl-group-label">Go To</span>
+        <div class="ctrl-group-body">
+          <input type="date" id="jumpDate" title="Jump to date">
+          <button id="resetScrollBtn" style="background:linear-gradient(to bottom,#e05050,#b03030);color:#fff;border-color:#802020;" title="Jump to today">Today</button>
+        </div>
+      </div>
+      <!-- File -->
+      <div class="ctrl-group">
+        <span class="ctrl-group-label">File</span>
+        <div class="ctrl-group-body">
+          <button id="openBtn" title="Open project">&#128194; Open</button>
+          <button id="undoBtn" title="Undo (Cmd+Z)" disabled>&#8617; Undo</button>
+          <button id="saveBtn" title="Save (Cmd+S)">&#128190; Save</button>
+        </div>
+      </div>
+      <!-- Zoom -->
+      <div class="ctrl-group">
+        <span class="ctrl-group-label">Zoom</span>
+        <div class="ctrl-group-body">
+          <button id="zoomOutBtn" title="Zoom out (Cmd+-)">−</button>
+          <button id="zoomInBtn" title="Zoom in (Cmd+=)">+</button>
+          <span id="zoomLabel" style="display:none">16px/d</span>
+        </div>
+      </div>
+      <!-- Export -->
+      <div class="ctrl-group">
+        <span class="ctrl-group-label">Project</span>
+        <div class="ctrl-group-body">
+          <button id="projectSettingsBtn" title="Project settings & overview">&#9881;</button>
+        </div>
+      </div>
+      <div class="ctrl-group">
+        <span class="ctrl-group-label">Export</span>
+        <div class="ctrl-group-body">
+          <button id="exportBtn" title="Export timeline as PDF">&#128196;</button>
+        </div>
+      </div>
+    </div>
+    <div id="ctrl-row2">
+      <label style="font-size:9px;color:#555;">Scroll:</label>
+      <input type="range" id="hslider" min="0" max="100" value="0">
+      <span id="scrollLabel" style="font-size:9px;color:#555;width:80px;white-space:nowrap;"></span>
+    </div>
+  </div>
+
+  <!-- Modals -->
+  <div class="modal-overlay" id="overlay">
+
+    <!-- Assignment edit modal -->
+    <div class="modal" id="taskModal" style="top:60px;left:120px;width:460px;">
+      <div class="modal-title" id="taskModalTitle">
+        Assignment Detail
+        <span class="modal-close" id="closeTask">✕</span>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <label>Task:</label>
+          <input type="text" id="tm_name">
+        </div>
+        <div class="form-row">
+          <label>Resource:</label>
+          <select id="tm_person"></select>
+        </div>
+        <div class="form-row">
+          <label>From:</label>
+          <input type="date" id="tm_from">
+        </div>
+        <div class="form-row">
+          <label>To:</label>
+          <input type="date" id="tm_to">
+        </div>
+        <div class="form-row">
+          <label>% Complete:</label>
+          <select id="tm_pct">
+            <option value="0">0%</option>
+            <option value="25">25%</option>
+            <option value="50">50%</option>
+            <option value="75">75%</option>
+            <option value="100">100%</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Color:</label>
+          <div style="display:flex;align-items:center;gap:10px;flex:1;">
+            <input type="color" id="tm_color" style="width:44px;height:26px;padding:1px 2px;border:1px solid #888;border-radius:3px;cursor:pointer;flex-shrink:0;">
+            <select id="tm_milestone" style="flex:1;font-family:Arial,sans-serif;font-size:12px;height:26px;border:1px solid #888;border-radius:3px;padding:0 4px;background:#fff;">
+              <option value="">No Milestone</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Notes:</label>
+          <textarea id="tm_notes" placeholder="Add a note (will be timestamped)…"></textarea>
+        </div>
+        <div id="tm_log_row" style="display:none;flex-direction:column;gap:4px;">
+          <label style="font-size:12px;color:#444;font-weight:bold;">History</label>
+          <div id="tm_log"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="del-btn" id="deleteTaskBtn">Delete</button>
+        <button id="cancelTask">Cancel</button>
+        <button class="primary" id="saveTask">Save</button>
+      </div>
+    </div>
+
+    <!-- Person modal -->
+    <div class="modal" id="personModal" style="top:80px;left:160px;width:400px;">
+      <div class="modal-title" id="personModalTitle">
+        Resource Detail
+        <span class="modal-close" id="closePerson">✕</span>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <label>Name:</label>
+          <input type="text" id="pm_name">
+        </div>
+        <div class="form-row" style="align-items:flex-start;">
+          <label style="padding-top:2px;">Assignments:</label>
+          <div class="info-badge" id="pm_tasks" style="min-height:50px;"></div>
+        </div>
+        <div class="form-row" style="align-items:flex-start;">
+          <label style="padding-top:2px;">Notes:</label>
+          <textarea id="pm_notes"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="del-btn" id="deletePersonBtn">Remove</button>
+        <button id="cancelPerson">Cancel</button>
+        <button class="primary" id="savePerson">Save</button>
+      </div>
+    </div>
+
+    <!-- Date/Milestone modal -->
+    <div class="modal" id="dateModal" style="top:60px;left:200px;width:340px;">
+      <div class="modal-title" id="dateModalTitle">
+        Milestone
+        <span class="modal-close" id="closeDate">✕</span>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <label>Date:</label>
+          <input type="date" id="dm_date" style="flex:1;">
+        </div>
+        <div id="dm_moved_note" style="display:none;font-size:10px;color:#e8a030;padding:2px 0 4px 0;">
+          ★ Date was moved from original week start
+        </div>
+        <div class="form-row">
+          <label>Name:</label>
+          <input type="text" id="dm_name" placeholder="e.g. Sprint End, Release…">
+        </div>
+        <div class="form-row" style="align-items:flex-start;">
+          <label style="padding-top:2px;">Notes:</label>
+          <textarea id="dm_notes"></textarea>
+        </div>
+        <div id="dm_history_wrap" style="display:none;margin-top:6px;">
+          <div style="font-size:9px;color:#888;margin-bottom:2px;letter-spacing:0.3px;">DATE HISTORY</div>
+          <div id="dm_history" style="font-size:9px;color:#666;max-height:72px;overflow-y:auto;background:#f5f5f5;border:1px solid #ddd;border-radius:3px;padding:4px 6px;line-height:1.6;"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="cancelDate">Cancel</button>
+        <button id="deleteDateBtn" style="color:#c00;margin-right:auto;" title="Remove milestone">Delete</button>
+        <button class="primary" id="saveDate">Save</button>
+      </div>
+    </div>
+
+    <!-- Add Person -->
+    <div class="modal" id="addPersonModal" style="top:110px;left:300px;width:260px;">
+      <div class="modal-title" id="addPersonModalTitle">
+        Add Resource
+        <span class="modal-close" id="closeAddPerson">✕</span>
+      </div>
+      <div class="modal-body">
+        <!-- Tabs -->
+        <div style="display:flex;gap:0;margin-bottom:10px;border-bottom:1px solid #ccc;">
+          <button id="ap-tab-manual" style="flex:1;padding:5px;border:none;background:none;font-size:11px;font-weight:600;color:#3a6aac;border-bottom:2px solid #3a6aac;cursor:pointer;">Manual</button>
+          <button id="ap-tab-team"   style="flex:1;padding:5px;border:none;background:none;font-size:11px;color:#888;cursor:pointer;">From Team</button>
+        </div>
+        <!-- Manual -->
+        <div id="ap-panel-manual">
+          <div class="form-row">
+            <label>Name:</label>
+            <input type="text" id="ap_name" placeholder="Full name">
+          </div>
+        </div>
+        <!-- From Team -->
+        <div id="ap-panel-team" style="display:none;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+            <select id="ap-team-select" style="flex:1;font-family:Arial,sans-serif;font-size:11px;height:24px;border:1px solid #aaa;border-radius:3px;padding:0 4px;background:#fff;">
+              <option value="">— select a team —</option>
+            </select>
+          </div>
+          <label id="ap-select-all-row" style="display:flex;align-items:center;gap:8px;padding:4px 2px 6px;font-size:11px;font-weight:600;cursor:pointer;border-bottom:1px solid #ddd;margin-bottom:4px;">
+            <input type="checkbox" id="ap-select-all"> Select All
+          </label>
+          <div id="ap-team-list" style="max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="cancelAddPerson">Cancel</button>
+        <button class="primary" id="confirmAddPerson">Add</button>
+        <button class="primary" id="confirmAddTeam" style="display:none;">Add Selected</button>
+      </div>
+    </div>
+
+    <!-- Save Team modal -->
+    <div class="modal" id="saveTeamModal" style="top:120px;left:320px;width:280px;">
+      <div class="modal-title" id="saveTeamModalTitle">
+        Save as Team
+        <span class="modal-close" id="closeSaveTeam">✕</span>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <label>Team name:</label>
+          <input type="text" id="st_name" placeholder="e.g. Design Team">
+        </div>
+        <div style="font-size:11px;color:#666;margin-top:2px;">
+          Saves all current resources to the team folder so they can be loaded into future projects.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="cancelSaveTeam">Cancel</button>
+        <button class="primary" id="confirmSaveTeam">Save Team</button>
+      </div>
+    </div>
+
+    <!-- Conflict resolution modal -->
+    <div class="modal" id="conflictModal" style="top:80px;left:180px;width:440px;">
+      <div class="modal-title" id="conflictModalTitle">
+        ⚠️ Scheduling Conflict
+        <span class="modal-close" id="closeConflict">✕</span>
+      </div>
+      <div class="modal-body">
+        <div id="conflict-summary" style="font-size:12px;color:#333;margin-bottom:8px;line-height:1.6;"></div>
+        <div id="conflict-options" style="display:flex;flex-direction:column;gap:8px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="cancelConflict">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Project Settings modal -->
+    <div class="modal" id="projectSettingsModal" style="top:60px;left:200px;width:460px;max-height:80vh;flex-direction:column;">
+      <div class="modal-title" id="projectSettingsTitle">
+        Project Overview
+        <span class="modal-close" id="closeProjectSettings">✕</span>
+      </div>
+      <div class="modal-body" style="overflow-y:auto;flex:1;">
+        <div style="display:flex;gap:12px;margin-bottom:10px;">
+          <div style="flex:1;">
+            <div style="font-size:9px;color:#888;letter-spacing:0.4px;margin-bottom:3px;">START DATE</div>
+            <div id="ps_start" style="font-size:13px;font-weight:bold;color:#1a3a6c;"></div>
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:9px;color:#888;letter-spacing:0.4px;margin-bottom:3px;">END DATE</div>
+            <div id="ps_end" style="font-size:13px;font-weight:bold;color:#1a3a6c;"></div>
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:9px;color:#888;letter-spacing:0.4px;margin-bottom:3px;">DURATION</div>
+            <div id="ps_dur" style="font-size:13px;font-weight:bold;color:#1a3a6c;"></div>
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:9px;color:#888;letter-spacing:0.4px;margin-bottom:3px;">RESOURCES</div>
+            <div id="ps_res" style="font-size:13px;font-weight:bold;color:#1a3a6c;"></div>
+          </div>
+        </div>
+        <div style="border-top:1px solid #ddd;margin:8px 0 10px;"></div>
+        <div style="font-size:9px;color:#888;letter-spacing:0.4px;margin-bottom:6px;">MILESTONES</div>
+        <div id="ps_milestones"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="closeProjectSettingsBtn">Close</button>
+      </div>
+    </div>
+
+  </div><!-- /overlay -->
+
+  <div id="tooltip"></div>
+
+  <!-- Milestone warning popup -->
+  <div id="mw-backdrop"></div>
+  <div id="milestone-warning">
+    <div class="mw-icon">⚠️</div>
+    <div class="mw-title">Task Extends Past Milestone</div>
+    <div class="mw-body" id="mw-body"></div>
+    <button id="mw-ok">OK</button>
+  </div>
+
+</div><!-- /app -->
+
+
+<script>
+/* ═══════════════════════════════════════
+   CONFIG
+═══════════════════════════════════════ */
+const CELL_H  = 28;   // row height px
+let   CELL_W  = 16;   // pixels per day (mutable for zoom)
+const DAY_MS  = 86400000;
+const WEEK_MS = DAY_MS * 7;
+
+// Timeline spans: current year, from Jan 1
+function startOfYear() {
+  const d = new Date();
+  return new Date(d.getFullYear(), 0, 1);
+}
+
+const ORIGIN = startOfYear();   // day-0 of the timeline
+const NUM_WEEKS = 52;
+const TOTAL_DAYS = NUM_WEEKS * 7;
+
+function dayOffset(date) {
+  // days from ORIGIN to the given Date
+  return Math.round((date - ORIGIN) / DAY_MS);
+}
+
+function offsetToDate(days) {
+  return new Date(ORIGIN.getTime() + days * DAY_MS);
+}
+
+function fmtDate(d) {
+  // d is a Date object
+  return d.toLocaleDateString('en-US', {month:'short', day:'numeric'});
+}
+
+function isoDate(d) {
+  // Use local date fields to avoid UTC-vs-local mismatch across timezones
+  const y  = d.getFullYear();
+  const m  = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+function parseIso(str) {
+  const [y,m,d] = str.split('-').map(Number);
+  return new Date(y, m-1, d);
+}
+
+// Monday of a week index
+function weekStart(weekIdx) {
+  return new Date(ORIGIN.getTime() + weekIdx * WEEK_MS);
+}
+
+/* ═══════════════════════════════════════
+   TASK COLORS
+═══════════════════════════════════════ */
+const COLORS = [
+  '#3d7fc7','#c0392b','#27ae60','#d68910','#8e44ad',
+  '#16a085','#1abc9c','#e67e22','#2980b9','#f39c12',
+  '#7f8c8d','#6c3483','#0e6655','#922b21','#1f618d'
+];
+let colorIdx = 0;
+let currentTeamFile  = null;
+let currentTeamLabel = '';
+let teamDirty = false;
+
+function markTeamDirty() { teamDirty = true; }
+function clearTeamDirty() { teamDirty = false; }
+
+// Pick a color for a new task, avoiding the last task's color for that person
+function nextColorForPerson(personId) {
+  const personTasks = state.tasks
+    .filter(t => t.personId === personId)
+    .sort((a, b) => a.fromDay - b.fromDay);
+  const lastColor = personTasks.length ? personTasks[personTasks.length - 1].color : null;
+  // find next color in cycle that isn't the same as lastColor
+  for (let i = 0; i < COLORS.length; i++) {
+    const c = COLORS[colorIdx % COLORS.length];
+    colorIdx++;
+    if (c !== lastColor) return c;
+  }
+  return COLORS[colorIdx++ % COLORS.length];
+}
+
+// After a task is moved, fix its color if it now matches an immediate neighbour
+function fixAdjacentColors(task) {
+  const sorted = state.tasks
+    .filter(t => t.personId === task.personId)
+    .sort((a, b) => a.fromDay - b.fromDay);
+  const idx = sorted.findIndex(t => t.id === task.id);
+  const prev = sorted[idx - 1];
+  const next = sorted[idx + 1];
+  const blocked = new Set([prev?.color, next?.color].filter(Boolean));
+  if (!blocked.has(task.color)) return; // no conflict
+  const pick = COLORS.find(c => !blocked.has(c));
+  if (pick) task.color = pick;
+}
+
+/* ═══════════════════════════════════════
+   STATE
+═══════════════════════════════════════ */
+const DEFAULT_PEOPLE = [
+  'Alex Morgan','Jordan Lee','Sam Rivera','Taylor Brooks','Casey Quinn',
+  'Jamie Patel','Riley Chen','Drew Hoffman','Morgan Blake','Avery Scott',
+  'Cameron Walsh','Skyler Nguyen','Reese Kimura','Peyton Torres','Quinn Abbott',
+  'Logan Fischer','Sage Okonkwo','Dakota Petrov','Emery Wallace','Finley Osei',
+  'Harper Díaz','Rowan Yamamoto','Kendall Johansson','Marlowe Singh','Ellis Nakamura',
+  'Soren Delacroix','Piper Adeyemi','Remy Castellano','Arlo Lindqvist','Wren Mbeki',
+  'Blaine Ferreira','Nova Kowalski'
+];
+
+let idN = 1;
+const uid = () => 'id' + (idN++);
+
+const state = {
+  people: DEFAULT_PEOPLE.map(name => ({ id: uid(), name, notes: '' })),
+  tasks:  [],
+  milestones: {}, // weekIdx -> { name, notes }
+  scrollX: 0,     // px from left
+  scrollY: 0,     // row offset
+  editing: null,  // { type, id }
+};
+
+/* generate some sample data */
+function addSample(name, personIdx, fromOffset, toOffset) {
+  state.tasks.push({
+    id: uid(), name,
+    personId: state.people[personIdx].id,
+    fromDay: fromOffset,
+    toDay:   toOffset,
+    pct: 0,
+    color: COLORS[colorIdx++ % COLORS.length],
+    notes: '', log: []
+  });
+}
+// start a few weeks in from today
+const todayOff = dayOffset(new Date());
+addSample('Project Kickoff',    0, todayOff,     todayOff + 10);
+addSample('Design Review',      1, todayOff + 2, todayOff + 18);
+addSample('Development Sprint', 2, todayOff + 5, todayOff + 33);
+addSample('QA & Testing',       3, todayOff + 28,todayOff + 42);
+addSample('Documentation',      5, todayOff + 7, todayOff + 21);
+addSample('Release Planning',   4, todayOff + 35,todayOff + 49);
+
+/* ═══════════════════════════════════════
+   DOM
+═══════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+const gridWrap   = $('grid-wrap');
+const gridCanvas = $('grid-canvas');
+const tasksLayer = $('tasks-layer');
+const dateHeader = $('date-header');
+const peopleInner= $('people-inner');
+const hslider    = $('hslider');
+const overlay    = $('overlay');
+const tooltip    = $('tooltip');
+
+/* ═══════════════════════════════════════
+   RENDER
+═══════════════════════════════════════ */
+function render() {
+  renderHeader();
+  renderPeople();
+  renderGrid();
+  renderMilestones();
+  renderTasks();
+  syncControls();
+  updateScrollLabel();
+}
+
+/* --- Date Header --- */
+function renderHeader() {
+  // Build week→[milestone entries] (array, supports multiple per week)
+  const weekToMs = {}; // displayWeek → [{ ms, storageKey }, ...]
+  Object.entries(state.milestones).forEach(([key, ms]) => {
+    const msDay  = ms.date ? dayOffset(new Date(ms.date + 'T00:00:00')) : parseInt(key) * 7;
+    const displayWeek = Math.floor(msDay / 7);
+    if (!weekToMs[displayWeek]) weekToMs[displayWeek] = [];
+    weekToMs[displayWeek].push({ ms, storageKey: parseInt(key) });
+  });
+
+  dateHeader.innerHTML = '';
+  for (let w = 0; w < NUM_WEEKS; w++) {
+    const d       = weekStart(w);
+    const entries = weekToMs[w] || [];
+    const cell    = document.createElement('div');
+    cell.style.width = (CELL_W * 7) + 'px';
+
+    if (entries.length === 0) {
+      cell.className = 'date-cell';
+      cell.innerHTML = `<span class="week-num">Wk ${w+1}</span><span class="week-date">${fmtDate(d)}</span>`;
+      cell.title = fmtDate(d);
+      cell.dataset.w = w;
+      cell.addEventListener('click', () => openDateModal(w));
+    } else if (entries.length === 1) {
+      const { ms, storageKey } = entries[0];
+      const msDate  = ms.date ? new Date(ms.date + 'T00:00:00') : d;
+      const msLabel = ms.name.length > 14 ? ms.name.slice(0, 13) + '…' : ms.name;
+      cell.className = 'date-cell has-milestone';
+      cell.innerHTML =
+        `<span class="week-num">Wk ${w+1}</span>` +
+        `<span class="week-date">${fmtDate(d)}</span>` +
+        `<span style="font-size:8px;color:#ffe;font-weight:bold;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;">★ ${msLabel} · ${fmtDate(msDate)}</span>`;
+      cell.title = `★ ${ms.name} — ${fmtDate(msDate)}`;
+      cell.dataset.w = w;
+      cell.addEventListener('click', () => openDateModal(storageKey));
+    } else {
+      // Multiple milestones in same week — show count, click opens picker
+      cell.className = 'date-cell has-milestone';
+      const names = entries.map(e => e.ms.name).join(', ');
+      cell.innerHTML =
+        `<span class="week-num">Wk ${w+1}</span>` +
+        `<span class="week-date">${fmtDate(d)}</span>` +
+        `<span style="font-size:8px;color:#ffe;font-weight:bold;">★ ${entries.length} milestones</span>`;
+      cell.title = `Milestones: ${names}`;
+      cell.dataset.w = w;
+      cell.addEventListener('click', e => openMilestonePicker(e, entries));
+    }
+    dateHeader.appendChild(cell);
+  }
+  applyScrollX();
+}
+
+/* ── Milestone picker (multiple in same week) ── */
+let _pickerEl = null;
+let _pickerOutsideHandler = null;
+function closeMilestonePicker() {
+  if (_pickerOutsideHandler) {
+    document.removeEventListener('click', _pickerOutsideHandler);
+    _pickerOutsideHandler = null;
+  }
+  if (_pickerEl) { _pickerEl.remove(); _pickerEl = null; }
+}
+function openMilestonePicker(e, entries) {
+  closeMilestonePicker();
+  const cell = e.currentTarget;
+  const rect = cell.getBoundingClientRect();
+  const picker = document.createElement('div');
+  _pickerEl = picker;
+  picker.style.cssText = `position:fixed;z-index:9999;background:#fff;border:1px solid #aaa;border-radius:5px;box-shadow:3px 3px 12px rgba(0,0,0,0.3);padding:6px 0;min-width:220px;left:${rect.left}px;top:${rect.bottom + 2}px;`;
+  picker.innerHTML = `<div style="font-size:9px;color:#888;padding:3px 12px 5px;letter-spacing:0.4px;border-bottom:1px solid #eee;margin-bottom:4px;">SELECT MILESTONE</div>`;
+  entries.forEach(({ ms, storageKey }) => {
+    const d = ms.date ? new Date(ms.date + 'T00:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '—';
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:6px 12px;cursor:pointer;font-size:11px;display:flex;gap:8px;align-items:baseline;';
+    row.innerHTML = `<span style="color:#888;white-space:nowrap;font-size:10px;">${d}</span><span style="font-weight:bold;">${ms.name}</span>`;
+    row.addEventListener('mouseenter', () => row.style.background = '#e8eef6');
+    row.addEventListener('mouseleave', () => row.style.background = '');
+    row.addEventListener('click', () => { closeMilestonePicker(); openDateModal(storageKey); });
+    picker.appendChild(row);
+  });
+  document.body.appendChild(picker);
+  // close on outside click
+  setTimeout(() => {
+    _pickerOutsideHandler = () => closeMilestonePicker();
+    document.addEventListener('click', _pickerOutsideHandler);
+  }, 0);
+}
+
+function applyScrollX() {
+  const tx = `translateX(${-state.scrollX}px)`;
+  dateHeader.style.transform      = tx;
+  tasksLayer.style.transform      = tx;
+  $('milestone-layer').style.transform = tx;
+}
+
+/* --- People column --- */
+function renderPeople() {
+  peopleInner.innerHTML = '';
+  state.people.forEach((p, i) => {
+    const y = (i - state.scrollY) * CELL_H;
+    if (y + CELL_H < 0 || y > gridWrap.clientHeight) return;
+    const cell = document.createElement('div');
+    cell.className = 'person-cell';
+    cell.style.position = 'absolute';
+    cell.style.top = y + 'px';
+    cell.style.left = '0'; cell.style.right = '0';
+    cell.textContent = p.name;
+    cell.title = p.name;
+    cell.dataset.pid = p.id;
+    cell.addEventListener('click', () => openPersonModal(p.id));
+    peopleInner.appendChild(cell);
+  });
+
+  // + button below last person
+  const y = (state.people.length - state.scrollY) * CELL_H;
+  if (y >= 0 && y <= gridWrap.clientHeight) {
+    const btn = document.createElement('div');
+    btn.style.cssText = `position:absolute;top:${y}px;left:0;right:0;height:${CELL_H}px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#888;font-size:16px;`;
+    btn.title = 'Add resource';
+    btn.textContent = '+';
+    btn.addEventListener('mouseenter', () => btn.style.color = '#333');
+    btn.addEventListener('mouseleave', () => btn.style.color = '#888');
+    btn.addEventListener('click', () => $('addPersonBtn').click());
+    peopleInner.appendChild(btn);
+  }
+}
+
+/* --- Grid canvas --- */
+function renderGrid() {
+  const W = gridWrap.clientWidth;
+  const H = gridWrap.clientHeight;
+  gridCanvas.width  = W;
+  gridCanvas.height = H;
+  const ctx = gridCanvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  // Row stripes
+  state.people.forEach((p, i) => {
+    const y = (i - state.scrollY) * CELL_H;
+    if (y + CELL_H < 0 || y > H) return;
+    ctx.fillStyle = i % 2 === 0 ? '#e6e6e6' : '#f0f0f0';
+    ctx.fillRect(0, y, W, CELL_H);
+  });
+
+  // Vertical day lines
+  ctx.strokeStyle = '#d0d0d0';
+  ctx.lineWidth = 0.5;
+  const startDay = Math.floor(state.scrollX / CELL_W);
+  const endDay   = Math.min(TOTAL_DAYS, startDay + Math.ceil(W / CELL_W) + 1);
+  for (let d = startDay; d <= endDay; d++) {
+    const x = d * CELL_W - state.scrollX + 0.5;
+    const isWeekBoundary = (d % 7 === 0);
+    ctx.strokeStyle = isWeekBoundary ? '#b0b8c8' : '#ddd';
+    ctx.lineWidth = isWeekBoundary ? 1 : 0.5;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+
+  // Horizontal row lines
+  ctx.strokeStyle = '#ccc';
+  ctx.lineWidth = 1;
+  for (let r = 0; r <= state.people.length; r++) {
+    const y = (r - state.scrollY) * CELL_H + 0.5;
+    if (y < -1 || y > H + 1) continue;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+
+  // Today line
+  const todayPx = dayOffset(new Date()) * CELL_W - state.scrollX;
+  if (todayPx >= 0 && todayPx <= W) {
+    ctx.strokeStyle = 'rgba(210,50,50,0.6)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 3]);
+    ctx.beginPath(); ctx.moveTo(todayPx, 0); ctx.lineTo(todayPx, H); ctx.stroke();
+    ctx.setLineDash([]);
+    // "Today" label
+    ctx.fillStyle = 'rgba(210,50,50,0.7)';
+    ctx.font = '8px Arial';
+    ctx.fillText('Today', todayPx + 3, 10);
+  }
+
+}
+
+/* --- Milestone markers (DOM layer, draggable) --- */
+let milestoneDrag = null;
+
+function renderMilestones() {
+  const layer = $('milestone-layer');
+  layer.innerHTML = '';
+  const H = gridWrap.clientHeight;
+  layer.style.height = H + 'px';
+
+  Object.entries(state.milestones).forEach(([w, ms]) => {
+    const weekIdx = parseInt(w);
+    // Use exact stored date if present, otherwise fall back to week start
+    const msDay = ms.date ? dayOffset(new Date(ms.date + 'T00:00:00')) : weekIdx * 7;
+    const x = msDay * CELL_W;
+
+    const marker = document.createElement('div');
+    marker.className = 'milestone-marker';
+    marker.style.left   = x + 'px';
+    marker.style.height = H + 'px';
+    marker.dataset.week = weekIdx;
+
+    const line = document.createElement('div');
+    line.className = 'milestone-line';
+    marker.appendChild(line);
+
+    marker.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      milestoneDrag = {
+        weekIdx,
+        startClientX: e.clientX,
+        el: marker,
+        origDay: msDay,
+        currentDay: msDay,
+      };
+      document.body.style.cursor = 'ew-resize';
+    });
+
+    layer.appendChild(marker);
+  });
+}
+
+/* --- Task bars --- */
+function renderTasks() {
+  const W = gridWrap.clientWidth + state.scrollX + 200;
+  const H = gridWrap.clientHeight;
+  tasksLayer.style.width  = W + 'px';
+  tasksLayer.style.height = H + 'px';
+  tasksLayer.innerHTML = '';
+
+  state.tasks.forEach(task => {
+    const personIdx = state.people.findIndex(p => p.id === task.personId);
+    if (personIdx < 0) return;
+
+    const y = (personIdx - state.scrollY) * CELL_H;
+    if (y + CELL_H < 0 || y > gridWrap.clientHeight) return;
+
+    const x1 = task.fromDay * CELL_W;
+    const x2 = (task.toDay + 1) * CELL_W;
+    const barW = x2 - x1 - 4;
+    if (barW < 2) return;
+
+    const bar = document.createElement('div');
+    bar.className = 'task-bar';
+    bar.style.cssText =
+      `left:${x1+2}px;top:${y+3}px;width:${barW}px;height:${CELL_H-6}px;background:${task.color}`;
+
+    if (task.pct > 0) {
+      const fill = document.createElement('div');
+      fill.className = 'progress-fill';
+      fill.style.width = task.pct + '%';
+      bar.appendChild(fill);
+    }
+
+    if (task.milestone != null && state.milestones[task.milestone]) {
+      const pin = document.createElement('span');
+      pin.textContent = '🔒';
+      pin.style.cssText = 'font-size:8px;margin-right:3px;opacity:0.85;pointer-events:none;flex-shrink:0;';
+      bar.appendChild(pin);
+    }
+
+    const lbl = document.createElement('span');
+    lbl.className = 'task-label';
+    lbl.textContent = task.name;
+    bar.appendChild(lbl);
+
+    bar.dataset.tid = task.id;
+    bar.addEventListener('mouseenter', e => { if (!drag) showTip(e, task, personIdx); });
+    bar.addEventListener('mouseleave',  hideTip);
+    bar.addEventListener('mousedown', e => startDrag(e, task, bar));
+
+    tasksLayer.appendChild(bar);
+  });
+}
+
+/* ═══════════════════════════════════════
+   DRAG TO RESCHEDULE
+   - mousedown on bar starts a potential drag
+   - movement < 1 full cell (16px) = click → open modal
+   - movement ≥ 1 cell = drag → move task, cascade followers
+═══════════════════════════════════════ */
+let drag = null;
+
+// Semi-transparent row highlight shown during vertical drags
+const dropRowEl = (() => {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:absolute;left:0;right:0;pointer-events:none;display:none;z-index:150;';
+  el.style.background = 'rgba(80,140,220,0.18)';
+  el.style.height = CELL_H + 'px';
+  tasksLayer.appendChild(el);
+  return el;
+})();
+
+function startDrag(e, task, barEl) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  hideTip();
+  const origPersonIdx = state.people.findIndex(p => p.id === task.personId);
+  drag = {
+    task,
+    barEl,
+    origFromDay:    task.fromDay,
+    dur:            task.toDay - task.fromDay,
+    startClientX:   e.clientX,
+    startClientY:   e.clientY,
+    origPersonIdx,
+    targetPersonIdx: origPersonIdx,
+    lastDayDelta:   0,
+    active:         false,
+  };
+}
+
+document.addEventListener('mousemove', e => {
+  if (milestoneDrag) {
+    const pxDelta  = e.clientX - milestoneDrag.startClientX;
+    const dayDelta = Math.round(pxDelta / CELL_W);
+    const newDay   = Math.max(0, Math.min(NUM_WEEKS * 7 - 1, milestoneDrag.origDay + dayDelta));
+    milestoneDrag.currentDay = newDay;
+    milestoneDrag.el.style.left = (newDay * CELL_W) + 'px';
+    return;
+  }
+  if (!drag) return;
+  const pxDeltaX = e.clientX - drag.startClientX;
+  const pxDeltaY = e.clientY - drag.startClientY;
+
+  if (!drag.active) {
+    if (Math.abs(pxDeltaX) < CELL_W && Math.abs(pxDeltaY) < CELL_H) return;
+    drag.active = true;
+    drag.barEl.style.opacity   = '0.65';
+    drag.barEl.style.zIndex    = '200';
+    drag.barEl.style.boxShadow = '0 4px 14px rgba(0,0,0,0.35)';
+    document.body.style.cursor = 'grabbing';
+    dropRowEl.style.display    = 'block';
+  }
+
+  // Horizontal
+  const dayDelta   = Math.round(pxDeltaX / CELL_W);
+  const newFromDay = Math.max(0, drag.origFromDay + dayDelta);
+  if (dayDelta !== drag.lastDayDelta) {
+    drag.lastDayDelta = dayDelta;
+    drag.barEl.style.left = (newFromDay * CELL_W + 2) + 'px';
+  }
+
+  // Vertical — which person row is the cursor over?
+  const rowDelta  = Math.round(pxDeltaY / CELL_H);
+  const targetIdx = Math.max(0, Math.min(state.people.length - 1, drag.origPersonIdx + rowDelta));
+  if (targetIdx !== drag.targetPersonIdx) {
+    drag.targetPersonIdx = targetIdx;
+  }
+  const targetY = (targetIdx - state.scrollY) * CELL_H;
+  drag.barEl.style.top  = (targetY + 3) + 'px';
+  dropRowEl.style.top   = targetY + 'px';
+});
+
+document.addEventListener('mouseup', e => {
+  if (milestoneDrag) {
+    document.body.style.cursor = '';
+    const { weekIdx, origDay, currentDay } = milestoneDrag;
+    milestoneDrag = null;
+    if (currentDay !== origDay) {
+      saveUndo();
+      const ms = state.milestones[weekIdx];
+      const oldDate = ms.date || isoDate(weekStart(weekIdx));
+      const newDate = isoDate(offsetToDate(currentDay));
+      if (!ms.dateHistory) ms.dateHistory = [];
+      ms.dateHistory.push({ on: isoDate(new Date()), from: oldDate, to: newDate, how: 'drag' });
+      ms.date = newDate;
+      markDirty();
+    }
+    render();
+    return;
+  }
+  if (!drag) return;
+  const { task, barEl, origFromDay, dur, lastDayDelta, active, origPersonIdx, targetPersonIdx } = drag;
+  drag = null;
+  document.body.style.cursor = '';
+  dropRowEl.style.display = 'none';
+
+  if (!active) {
+    openTaskModal(task.id);
+    return;
+  }
+
+  barEl.style.opacity   = '';
+  barEl.style.zIndex    = '';
+  barEl.style.boxShadow = '';
+
+  const newFromDay  = Math.max(0, origFromDay + lastDayDelta);
+  const newToDay    = newFromDay + dur;
+  const newPersonId = state.people[targetPersonIdx].id;
+  const personChanged = newPersonId !== task.personId;
+
+  if (newFromDay === origFromDay && !personChanged) { render(); return; }
+
+  const conflicts = findConflicts(newPersonId, newFromDay, newToDay, personChanged ? null : task.id);
+
+  if (conflicts.length) {
+    task.fromDay  = origFromDay;
+    task.toDay    = origFromDay + dur;
+    render();
+    const dragIntent = { ...task, fromDay: newFromDay, toDay: newToDay, personId: newPersonId };
+    pendingTask = dragIntent;
+    pendingTask._isDragResolve = true;
+    pendingTask._originalTask  = task;
+    showConflictModal(dragIntent, conflicts);
+  } else {
+    saveUndo();
+    logDragChange(task, newFromDay, newToDay, newPersonId);
+    task.fromDay  = newFromDay;
+    task.toDay    = newToDay;
+    task.personId = newPersonId;
+    fixAdjacentColors(task);
+    render();
+    markDirty();
+    showMilestoneWarning(task);
+  }
+});
+
+/* ═══════════════════════════════════════
+   TOOLTIP
+═══════════════════════════════════════ */
+function showTip(e, task, personIdx) {
+  const p = state.people.find(x => x.id === task.personId);
+  const from = offsetToDate(task.fromDay);
+  const to   = offsetToDate(task.toDay);
+  const days = task.toDay - task.fromDay + 1;
+  tooltip.textContent =
+    task.name + '\n' +
+    'Resource: ' + (p ? p.name : '?') + '\n' +
+    'From:  ' + fmtDate(from) + '\n' +
+    'To:    ' + fmtDate(to) + '\n' +
+    'Duration: ' + days + ' day' + (days !== 1 ? 's' : '') + '\n' +
+    'Complete: ' + task.pct + '%';
+  tooltip.style.display = 'block';
+  placeTip(e);
+}
+function placeTip(e) {
+  const r = $('app').getBoundingClientRect();
+  let tx = e.clientX - r.left + 14;
+  let ty = e.clientY - r.top  + 14;
+  if (tx + 200 > 900) tx -= 220;
+  tooltip.style.left = tx + 'px';
+  tooltip.style.top  = ty + 'px';
+}
+function hideTip() { tooltip.style.display = 'none'; }
+
+/* ═══════════════════════════════════════
+   MILESTONE WARNING
+═══════════════════════════════════════ */
+function showMilestoneWarning(task) {
+  if (task.milestone == null) return;
+  const ms = state.milestones[task.milestone];
+  if (!ms) return;
+  const msDate = ms.date ? new Date(ms.date + 'T00:00:00') : weekStart(task.milestone);
+  const msDay  = ms.date ? dayOffset(msDate) : task.milestone * 7;
+  if (task.toDay <= msDay) return;
+  const person = state.people.find(p => p.id === task.personId);
+  $('mw-body').innerHTML =
+    `<strong>${task.name}</strong> is assigned to <strong>${person?.name || ''}</strong><br>` +
+    `and is scheduled to complete on <strong>${fmtDate(offsetToDate(task.toDay))}</strong>,<br>` +
+    `which is after the <strong>★ ${ms.name}</strong> milestone<br>` +
+    `(<strong>${fmtDate(msDate)}</strong>).`;
+  $('milestone-warning').classList.add('visible');
+  $('mw-backdrop').classList.add('visible');
+}
+
+/* ═══════════════════════════════════════
+   CONTROLS SYNC
+═══════════════════════════════════════ */
+function syncControls() {
+  const sel = $('personSel');
+  const curVal = sel.value;
+  sel.innerHTML = state.people.map(p =>
+    `<option value="${p.id}">${p.name}</option>`).join('');
+  if (curVal) sel.value = curVal;
+
+  // Populate weeks dropdown once
+  const weeksDur = $('weeksDur');
+  if (!weeksDur.options.length) {
+    for (let i = 1; i <= 10; i++) {
+      weeksDur.add(new Option(i + (i === 1 ? ' week' : ' weeks'), i));
+    }
+    weeksDur.value = 2;
+  }
+
+  // Set default from date if empty
+  if (!$('fromDate').value) {
+    $('fromDate').value = isoDate(new Date());
+  }
+  recalcToDate();
+}
+
+function recalcToDate() {
+  const fromStr = $('fromDate').value;
+  if (!fromStr) return;
+  const weeks = parseInt($('weeksDur').value) || 1;
+  const from = parseIso(fromStr);
+  from.setDate(from.getDate() + weeks * 7 - 1);
+  $('toDate').value = isoDate(from);
+}
+
+$('fromDate').addEventListener('change', recalcToDate);
+$('weeksDur').addEventListener('change', recalcToDate);
+
+function updateScrollLabel() {
+  const d = offsetToDate(Math.floor(state.scrollX / CELL_W));
+  $('scrollLabel').textContent = fmtDate(d);
+}
+
+/* ═══════════════════════════════════════
+   MODALS
+═══════════════════════════════════════ */
+function showModal(id) {
+  ['taskModal','personModal','dateModal','addPersonModal','conflictModal','saveTeamModal','projectSettingsModal'].forEach(mid => {
+    const el = $(mid);
+    if (mid === id) {
+      el.style.display = mid === 'projectSettingsModal' ? 'flex' : 'block';
+    } else {
+      el.style.display = 'none';
+    }
+  });
+  overlay.classList.add('active');
+}
+
+function closeAll() {
+  overlay.classList.remove('active');
+  state.editing = null;
+}
+
+overlay.addEventListener('click', e => { if (e.target === overlay) closeAll(); });
+
+/* ── Task modal ── */
+function openTaskModal(tid) {
+  const task = state.tasks.find(t => t.id === tid);
+  if (!task) return;
+  state.editing = { type: 'task', id: tid };
+
+  // populate person select
+  $('tm_person').innerHTML = state.people.map(p =>
+    `<option value="${p.id}">${p.name}</option>`).join('');
+  $('tm_person').value = task.personId;
+  $('tm_name').value   = task.name;
+  $('tm_from').value   = isoDate(offsetToDate(task.fromDay));
+  $('tm_to').value     = isoDate(offsetToDate(task.toDay));
+  $('tm_pct').value    = task.pct;
+  $('tm_color').value  = task.color || '#3d7fc7';
+  $('tm_notes').value  = '';
+
+  // Populate milestone dropdown
+  const msel = $('tm_milestone');
+  msel.innerHTML = '<option value="">No Milestone</option>';
+  Object.entries(state.milestones).sort((a,b) => +a[0] - +b[0]).forEach(([w, ms]) => {
+    const opt = document.createElement('option');
+    opt.value = w;
+    const msDate = ms.date ? new Date(ms.date + 'T00:00:00') : weekStart(+w);
+    opt.textContent = '★ ' + ms.name + ' (' + fmtDate(msDate) + ')';
+    msel.appendChild(opt);
+  });
+  msel.value = task.milestone != null ? String(task.milestone) : '';
+
+  const logRow = $('tm_log_row');
+  const entries = Array.isArray(task.log) ? task.log : [];
+  if (entries.length) {
+    // Flatten each entry into individual one-line rows: "timestamp  Field: old → new"
+    const rows = [];
+    entries.forEach(e => {
+      e.lines.forEach(l => {
+        if (l.startsWith('Note:')) {
+          rows.push(`<div class="log-row"><span class="log-ts">${e.ts} &nbsp;</span><span class="note">${l}</span></div>`);
+        } else {
+          const m = l.match(/^([^:]+):\s*(.+?)\s*→\s*(.+)$/);
+          if (m) {
+            rows.push(`<div class="log-row"><span class="log-ts">${e.ts} &nbsp;</span><span class="field">${m[1]}:</span> ${m[2]} <span class="arrow">→</span> ${m[3]}</div>`);
+          } else {
+            rows.push(`<div class="log-row"><span class="log-ts">${e.ts} &nbsp;</span>${l}</div>`);
+          }
+        }
+      });
+    });
+    $('tm_log').innerHTML = rows.join('');
+    $('tm_log').scrollTop = $('tm_log').scrollHeight;
+    logRow.style.display = 'flex';
+  } else {
+    logRow.style.display = 'none';
+  }
+
+  showModal('taskModal');
+}
+
+$('saveTask').addEventListener('click', () => {
+  const task = state.tasks.find(t => t.id === state.editing?.id);
+  if (!task) return;
+  saveUndo();
+
+  const ts = new Date().toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
+  const changes = [];
+
+  const newName     = $('tm_name').value.trim() || task.name;
+  const newPersonId = $('tm_person').value;
+  const newFromDay  = dayOffset(parseIso($('tm_from').value));
+  const newToDay    = Math.max(newFromDay, dayOffset(parseIso($('tm_to').value)));
+  const newPct      = parseInt($('tm_pct').value);
+  const newColor    = $('tm_color').value;
+
+  if (newName !== task.name)
+    changes.push(`Name: "${task.name}" → "${newName}"`);
+
+  if (newPersonId !== task.personId) {
+    const oldP = state.people.find(p => p.id === task.personId);
+    const newP = state.people.find(p => p.id === newPersonId);
+    changes.push(`Assigned: ${oldP?.name || '?'} → ${newP?.name || '?'}`);
+  }
+
+  if (newFromDay !== task.fromDay)
+    changes.push(`From: ${fmtDate(offsetToDate(task.fromDay))} → ${fmtDate(offsetToDate(newFromDay))}`);
+
+  if (newToDay !== task.toDay)
+    changes.push(`To: ${fmtDate(offsetToDate(task.toDay))} → ${fmtDate(offsetToDate(newToDay))}`);
+
+  if (newPct !== task.pct)
+    changes.push(`Complete: ${task.pct}% → ${newPct}%`);
+
+  // User note
+  const note = $('tm_notes').value.trim();
+  if (note) changes.push(`Note: ${note}`);
+
+  if (changes.length) {
+    if (!Array.isArray(task.log)) task.log = [];
+    task.log.push({ ts, lines: changes });
+  }
+
+  const newMilestone = $('tm_milestone').value !== '' ? +$('tm_milestone').value : null;
+
+  task.name      = newName;
+  task.personId  = newPersonId;
+  task.fromDay   = newFromDay;
+  task.toDay     = newToDay;
+  task.pct       = newPct;
+  task.color     = newColor;
+  task.milestone = newMilestone;
+
+  markDirty();
+  closeAll();
+  render();
+  showMilestoneWarning(task);
+});
+
+$('deleteTaskBtn').addEventListener('click', () => {
+  saveUndo();
+  state.tasks = state.tasks.filter(t => t.id !== state.editing?.id);
+  closeAll(); render();
+});
+$('cancelTask').addEventListener('click', closeAll);
+$('closeTask').addEventListener('click', closeAll);
+
+function closeMilestoneWarning() {
+  $('milestone-warning').classList.remove('visible');
+  $('mw-backdrop').classList.remove('visible');
+}
+$('mw-ok').addEventListener('click', closeMilestoneWarning);
+$('mw-backdrop').addEventListener('click', closeMilestoneWarning);
+
+/* ── Person modal ── */
+function openPersonModal(pid) {
+  const p = state.people.find(x => x.id === pid);
+  if (!p) return;
+  state.editing = { type: 'person', id: pid };
+  $('pm_name').value  = p.name;
+  $('pm_notes').value = p.notes;
+
+  const myTasks = state.tasks.filter(t => t.personId === pid);
+  $('pm_tasks').innerHTML = myTasks.length
+    ? myTasks.map(t => {
+        const from = fmtDate(offsetToDate(t.fromDay));
+        const to   = fmtDate(offsetToDate(t.toDay));
+        return `• ${t.name} <span style="color:#888">(${from} – ${to})</span>`;
+      }).join('<br>')
+    : '<em style="color:#999">No assignments</em>';
+
+  showModal('personModal');
+}
+
+$('savePerson').addEventListener('click', () => {
+  const p = state.people.find(x => x.id === state.editing?.id);
+  if (!p) return;
+  saveUndo();
+  p.name  = $('pm_name').value.trim() || p.name;
+  p.notes = $('pm_notes').value;
+  markTeamDirty();
+  closeAll(); render();
+});
+
+$('deletePersonBtn').addEventListener('click', () => {
+  if (!confirm('Remove this resource? Their assignments will be deleted.')) return;
+  saveUndo();
+  const pid = state.editing?.id;
+  state.people = state.people.filter(p => p.id !== pid);
+  state.tasks  = state.tasks.filter(t => t.personId !== pid);
+  markTeamDirty();
+  closeAll(); render();
+});
+$('cancelPerson').addEventListener('click', closeAll);
+$('closePerson').addEventListener('click', closeAll);
+
+/* ── Date modal ── */
+function renderMilestoneHistory(ms) {
+  const hist = ms.dateHistory;
+  const wrap = $('dm_history_wrap');
+  if (!hist || !hist.length) { wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
+  $('dm_history').innerHTML = hist.slice().reverse().map(h =>
+    `<div>${h.on} &nbsp;${h.from} → ${h.to}${h.how === 'drag' ? ' <span style="color:#aaa">(dragged)</span>' : ''}</div>`
+  ).join('');
+}
+
+function openDateModal(weekIdx) {
+  state.editing = { type: 'date', id: weekIdx };
+  const ms = state.milestones[weekIdx] || {};
+  const defaultDate = ms.date || isoDate(weekStart(weekIdx));
+  $('dm_date').value  = defaultDate;
+  $('dm_name').value  = ms.name  || '';
+  $('dm_notes').value = ms.notes || '';
+  const wasMoved = ms.date && ms.date !== isoDate(weekStart(weekIdx));
+  $('dm_moved_note').style.display = wasMoved ? '' : 'none';
+  renderMilestoneHistory(ms);
+  showModal('dateModal');
+  setTimeout(() => $('dm_name').focus(), 40);
+}
+
+$('saveDate').addEventListener('click', () => {
+  const w = state.editing?.id;
+  if (w == null) return;
+  const name = $('dm_name').value.trim();
+  if (!name) { $('dm_name').focus(); return; }
+  saveUndo();
+  const dateVal = $('dm_date').value || isoDate(weekStart(w));
+  const prev = state.milestones[w];
+  const history = prev?.dateHistory ? [...prev.dateHistory] : [];
+  if (prev && prev.date && prev.date !== dateVal) {
+    history.push({ on: isoDate(new Date()), from: prev.date, to: dateVal, how: 'edit' });
+  }
+  state.milestones[w] = { name, date: dateVal, notes: $('dm_notes').value, dateHistory: history };
+  closeAll(); render();
+});
+
+$('deleteDateBtn').addEventListener('click', () => {
+  const w = state.editing?.id;
+  if (w == null) return;
+  if (!state.milestones[w]) { closeAll(); return; }
+  saveUndo();
+  delete state.milestones[w];
+  closeAll(); render();
+});
+
+$('cancelDate').addEventListener('click', closeAll);
+$('closeDate').addEventListener('click', closeAll);
+
+/* ── Add Person modal ── */
+function switchAddPersonTab(tab) {
+  const isManual = tab === 'manual';
+  $('ap-panel-manual').style.display = isManual ? '' : 'none';
+  $('ap-panel-team').style.display   = isManual ? 'none' : '';
+  $('confirmAddPerson').style.display = isManual ? '' : 'none';
+  $('confirmAddTeam').style.display   = isManual ? 'none' : '';
+  $('ap-tab-manual').style.cssText += isManual
+    ? ';color:#3a6aac;border-bottom:2px solid #3a6aac;font-weight:600'
+    : ';color:#888;border-bottom:2px solid transparent;font-weight:400';
+  $('ap-tab-team').style.cssText += isManual
+    ? ';color:#888;border-bottom:2px solid transparent;font-weight:400'
+    : ';color:#3a6aac;border-bottom:2px solid #3a6aac;font-weight:600';
+}
+
+$('ap-tab-manual').addEventListener('click', () => switchAddPersonTab('manual'));
+async function loadTeamIntoList(file) {
+  const teamList = $('ap-team-list');
+  teamList.innerHTML = '<em style="color:#999;font-size:11px;">Loading…</em>';
+  const team = window.electronAPI ? await window.electronAPI.loadTeam(file) : [];
+  const existing = new Set(state.people.map(p => p.name.toLowerCase()));
+  teamList.innerHTML = '';
+  if (!team.length) {
+    teamList.innerHTML = '<em style="color:#999;font-size:11px;">No members found.</em>';
+    return;
+  }
+  const selectAll = $('ap-select-all');
+  selectAll.checked = false;
+  selectAll.indeterminate = false;
+  selectAll.onchange = () => {
+    teamList.querySelectorAll('input[type=checkbox]:not(:disabled)')
+      .forEach(cb => cb.checked = selectAll.checked);
+  };
+  team.forEach(member => {
+    const already = existing.has(member.name.toLowerCase());
+    const row = document.createElement('label');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:11px;cursor:pointer;' + (already ? 'opacity:0.4;' : '');
+    row.innerHTML = `<input type="checkbox" ${already ? 'disabled' : ''} data-name="${member.name}">
+      <span style="flex:1">${member.name}</span>
+      <span style="color:#999;font-size:10px;">${member.role || ''}</span>`;
+    const cb = row.querySelector('input');
+    cb.addEventListener('change', () => {
+      const all = [...teamList.querySelectorAll('input[type=checkbox]:not(:disabled)')];
+      selectAll.checked = all.length > 0 && all.every(c => c.checked);
+      selectAll.indeterminate = !selectAll.checked && all.some(c => c.checked);
+    });
+    teamList.appendChild(row);
+  });
+}
+
+$('ap-tab-team').addEventListener('click', async () => {
+  switchAddPersonTab('team');
+  if (!window.electronAPI) return;
+  const teams = await window.electronAPI.listTeams();
+  const sel = $('ap-team-select');
+  sel.innerHTML = '<option value="">— select a team —</option>';
+  teams.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t.file;
+    opt.textContent = t.label;
+    sel.appendChild(opt);
+  });
+  // Auto-load first team if only one
+  if (teams.length === 1) {
+    sel.value = teams[0].file;
+    await loadTeamIntoList(teams[0].file);
+  }
+});
+
+$('ap-team-select').addEventListener('change', async () => {
+  const file = $('ap-team-select').value;
+  if (file) {
+    const opt = $('ap-team-select').selectedOptions[0];
+    currentTeamFile  = file;
+    currentTeamLabel = opt ? opt.textContent : '';
+    await loadTeamIntoList(file);
+  } else {
+    $('ap-team-list').innerHTML = '';
+  }
+});
+
+$('addPersonBtn').addEventListener('click', () => {
+  $('ap_name').value = '';
+  switchAddPersonTab('manual');
+  showModal('addPersonModal');
+  setTimeout(() => $('ap_name').focus(), 40);
+});
+
+$('confirmAddPerson').addEventListener('click', () => {
+  const name = $('ap_name').value.trim();
+  if (!name) return;
+  saveUndo();
+  state.people.push({ id: uid(), name, notes: '' });
+  markTeamDirty();
+  closeAll(); render();
+});
+
+$('confirmAddTeam').addEventListener('click', () => {
+  const checked = [...$('ap-team-list').querySelectorAll('input[type=checkbox]:checked')];
+  if (!checked.length) return;
+  saveUndo();
+  checked.forEach(cb => state.people.push({ id: uid(), name: cb.dataset.name, notes: '' }));
+  markTeamDirty();
+  closeAll(); render();
+});
+
+$('cancelAddPerson').addEventListener('click', closeAll);
+$('closeAddPerson').addEventListener('click', closeAll);
+
+/* ── Enter in add-person box ── */
+$('ap_name').addEventListener('keydown', e => { if (e.key==='Enter') $('confirmAddPerson').click(); });
+
+/* ═══════════════════════════════════════
+   NEW ASSIGNMENT
+═══════════════════════════════════════ */
+// ── Conflict detection ──
+function findConflicts(personId, fromDay, toDay, excludeId) {
+  return state.tasks
+    .filter(t => t.personId === personId && t.id !== excludeId
+              && t.fromDay <= toDay && t.toDay >= fromDay)
+    .sort((a, b) => a.fromDay - b.fromDay);
+}
+
+// Pack tasks for a person whose dates collide with or follow a placed range [fromDay, toDay].
+// Tasks that end before fromDay are untouched.
+// Tasks that overlap OR follow are placed sequentially starting at cursor = toDay + 1,
+// using Math.max(cursor, t.fromDay) so non-conflicting tasks stay where they are.
+// excludeId skips the dragged task when resolving a drag conflict.
+function packConflicting(personId, fromDay, toDay, excludeId) {
+  const ts = new Date().toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
+  let cursor = toDay + 1;
+  state.tasks
+    .filter(t => t.personId === personId && t.id !== excludeId
+             && t.toDay >= fromDay)
+    .sort((a, b) => a.fromDay - b.fromDay)
+    .forEach(t => {
+      const dur        = t.toDay - t.fromDay;
+      const oldFromDay = t.fromDay;
+      const oldToDay   = t.toDay;
+      t.fromDay = Math.max(cursor, t.fromDay);
+      t.toDay   = t.fromDay + dur;
+      cursor    = t.toDay + 1;
+      if (t.fromDay !== oldFromDay) {
+        if (!Array.isArray(t.log)) t.log = [];
+        t.log.push({ ts, lines: [
+          `Shifted due to overlap — From: ${fmtDate(offsetToDate(oldFromDay))} → ${fmtDate(offsetToDate(t.fromDay))}`,
+          `To: ${fmtDate(offsetToDate(oldToDay))} → ${fmtDate(offsetToDate(t.toDay))}`,
+        ]});
+      }
+    });
+}
+
+// Before: new task keeps its dates; push everything that overlaps or follows.
+function resolveConflictBefore(newTask, excludeId) {
+  packConflicting(newTask.personId, newTask.fromDay, newTask.toDay, excludeId);
+}
+
+// After: move new task to right after the anchor; push anything that now conflicts.
+function resolveConflictAfter(newTask, anchorTask, excludeId) {
+  const dur = newTask.toDay - newTask.fromDay;
+  newTask.fromDay = anchorTask.toDay + 1;
+  newTask.toDay   = newTask.fromDay + dur;
+  packConflicting(newTask.personId, newTask.fromDay, newTask.toDay, excludeId);
+}
+
+/* ═══════════════════════════════════════
+   UNDO
+═══════════════════════════════════════ */
+const undoStack = [];
+
+function saveUndo() {
+  undoStack.push(JSON.parse(JSON.stringify({
+    tasks:      state.tasks,
+    people:     state.people,
+    milestones: state.milestones,
+  })));
+  if (undoStack.length > 50) undoStack.shift();
+  $('undoBtn').disabled = false;
+}
+
+function undo() {
+  if (!undoStack.length) return;
+  const snap = undoStack.pop();
+  state.tasks      = snap.tasks;
+  state.people     = snap.people;
+  state.milestones = snap.milestones;
+  $('undoBtn').disabled = undoStack.length === 0;
+  render();
+  markDirty();
+}
+
+$('undoBtn').addEventListener('click', undo);
+
+function scrollToTask(fromDay) {
+  const targetX = fromDay * CELL_W;
+  if (targetX < state.scrollX || targetX > state.scrollX + gridWrap.clientWidth - 100) {
+    state.scrollX = Math.max(0, targetX - 40);
+    hslider.value = (state.scrollX / maxScrollX()) * 100;
+    updateScrollLabel();
+    applyScrollX();
+    renderGrid();
+  }
+}
+
+// Pending task waiting for conflict resolution
+let pendingTask = null;
+
+function commitTask(task) {
+  state.tasks.push(task);
+  $('taskInput').value = '';
+  scrollToTask(task.fromDay);
+  render();
+  markDirty();
+}
+
+function logDragChange(task, newFromDay, newToDay, newPersonId) {
+  const ts = new Date().toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
+  const lines = [];
+  if (newPersonId !== task.personId) {
+    const oldP = state.people.find(p => p.id === task.personId);
+    const newP = state.people.find(p => p.id === newPersonId);
+    lines.push(`Reassigned: ${oldP?.name || '?'} → ${newP?.name || '?'}`);
+  }
+  if (newFromDay !== task.fromDay)
+    lines.push(`From: ${fmtDate(offsetToDate(task.fromDay))} → ${fmtDate(offsetToDate(newFromDay))}`);
+  if (newToDay !== task.toDay)
+    lines.push(`To: ${fmtDate(offsetToDate(task.toDay))} → ${fmtDate(offsetToDate(newToDay))}`);
+  if (lines.length) {
+    if (!Array.isArray(task.log)) task.log = [];
+    task.log.push({ ts, lines });
+  }
+}
+
+// Called after resolve — either moves an existing dragged task or commits a brand-new one
+function applyPendingTask() {
+  if (!pendingTask) return;
+  if (pendingTask._isDragResolve) {
+    // Drag resolve: update the original task's dates in-place
+    const orig = pendingTask._originalTask;
+    logDragChange(orig, pendingTask.fromDay, pendingTask.toDay, pendingTask.personId || orig.personId);
+    orig.fromDay  = pendingTask.fromDay;
+    orig.toDay    = pendingTask.toDay;
+    if (pendingTask.personId) orig.personId = pendingTask.personId;
+    fixAdjacentColors(orig);
+    scrollToTask(orig.fromDay);
+    markDirty();
+    showMilestoneWarning(orig);
+  } else {
+    // New task: add it to state
+    commitTask(pendingTask);
+  }
+  pendingTask = null;
+}
+
+function showConflictModal(task, conflicts) {
+  pendingTask = task;
+  const person = state.people.find(p => p.id === task.personId);
+
+  $('conflict-summary').innerHTML =
+    `<strong>"${task.name}"</strong> overlaps with existing tasks for <strong>${person?.name}</strong>.<br>
+     Choose where to place it:`;
+
+  const opts = $('conflict-options');
+  opts.innerHTML = '';
+
+  conflicts.forEach(c => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;background:#f5f5f5;border:1px solid #ddd;border-radius:5px;padding:8px 10px;font-size:12px;';
+    row.innerHTML = `
+      <span style="color:#333;flex:1"><strong>${c.name}</strong>
+        <span style="color:#888;font-size:11px">(${fmtDate(offsetToDate(c.fromDay))} – ${fmtDate(offsetToDate(c.toDay))})</span>
+      </span>
+      <div style="display:flex;gap:6px;margin-left:10px;">
+        <button class="btn-before" data-id="${c.id}" style="font-size:11px;padding:4px 10px;border:1px solid #3a6aac;border-radius:4px;background:#e8f0fa;color:#3a6aac;cursor:pointer;">Before</button>
+        <button class="btn-after"  data-id="${c.id}" style="font-size:11px;padding:4px 10px;border:1px solid #5a9a5a;border-radius:4px;background:#e8f5e8;color:#3a7a3a;cursor:pointer;">After</button>
+      </div>`;
+    opts.appendChild(row);
+  });
+
+  opts.querySelectorAll('.btn-before').forEach(btn => {
+    btn.addEventListener('click', () => {
+      saveUndo();
+      const excl = pendingTask._isDragResolve ? pendingTask._originalTask.id : undefined;
+      resolveConflictBefore(pendingTask, excl);
+      applyPendingTask();
+      closeAll(); render();
+    });
+  });
+
+  opts.querySelectorAll('.btn-after').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const anchor = state.tasks.find(t => t.id === btn.dataset.id);
+      if (!anchor) { pendingTask = null; closeAll(); return; }
+      saveUndo();
+      const excl = pendingTask._isDragResolve ? pendingTask._originalTask.id : undefined;
+      resolveConflictAfter(pendingTask, anchor, excl);
+      applyPendingTask();
+      closeAll(); render();
+    });
+  });
+
+  showModal('conflictModal');
+}
+
+$('cancelConflict').addEventListener('click', () => { pendingTask = null; closeAll(); });
+$('closeConflict').addEventListener('click',  () => { pendingTask = null; closeAll(); });
+
+$('newTaskBtn').addEventListener('click', () => {
+  const name = $('taskInput').value.trim();
+  if (!name) { $('taskInput').focus(); return; }
+  const pid = $('personSel').value;
+  if (!pid) return;
+  const fromStr = $('fromDate').value;
+  const toStr   = $('toDate').value;
+  if (!fromStr || !toStr) return;
+  const fromDay = dayOffset(parseIso(fromStr));
+  const toDay   = dayOffset(parseIso(toStr));
+  if (toDay < fromDay) { alert('End date must be after start date.'); return; }
+
+  const newTask = {
+    id: uid(), name, personId: pid,
+    fromDay, toDay,
+    pct: 0, color: nextColorForPerson(pid),
+    notes: '', log: []
+  };
+
+  const conflicts = findConflicts(pid, fromDay, toDay, newTask.id);
+  saveUndo();
+  if (conflicts.length) {
+    showConflictModal(newTask, conflicts);
+  } else {
+    commitTask(newTask);
+  }
+});
+
+$('taskInput').addEventListener('keydown', e => { if (e.key==='Enter') $('newTaskBtn').click(); });
+
+/* ═══════════════════════════════════════
+   ZOOM
+═══════════════════════════════════════ */
+const ZOOM_LEVELS = [6, 8, 10, 12, 16, 20, 24, 32];
+
+function applyZoom(newCellW) {
+  const centerDay = Math.floor((state.scrollX + gridWrap.clientWidth / 2) / CELL_W);
+  CELL_W = newCellW;
+  state.scrollX = Math.max(0, Math.min(maxScrollX(), centerDay * CELL_W - gridWrap.clientWidth / 2));
+  hslider.value = maxScrollX() > 0 ? (state.scrollX / maxScrollX()) * 100 : 0;
+  $('zoomLabel').textContent = CELL_W + 'px/d';
+  render();
+}
+
+$('zoomInBtn').addEventListener('click', () => {
+  const idx = ZOOM_LEVELS.indexOf(CELL_W);
+  if (idx < ZOOM_LEVELS.length - 1) applyZoom(ZOOM_LEVELS[idx + 1]);
+});
+$('zoomOutBtn').addEventListener('click', () => {
+  const idx = ZOOM_LEVELS.indexOf(CELL_W);
+  if (idx > 0) applyZoom(ZOOM_LEVELS[idx - 1]);
+});
+
+$('resetScrollBtn').addEventListener('click', () => {
+  $('jumpDate').value = isoDate(new Date());
+  scrollToToday();
+  applyScrollX();
+  renderGrid();
+  renderTasks();
+  updateScrollLabel();
+});
+
+$('jumpDate').addEventListener('change', () => {
+  const val = $('jumpDate').value;
+  if (!val) return;
+  const day = dayOffset(parseIso(val));
+  state.scrollX = Math.max(0, Math.min(maxScrollX(), day * CELL_W - 80));
+  hslider.value = maxScrollX() > 0 ? (state.scrollX / maxScrollX()) * 100 : 0;
+  applyScrollX();
+  renderGrid();
+  updateScrollLabel();
+});
+
+/* ═══════════════════════════════════════
+   SCROLL
+═══════════════════════════════════════ */
+const maxScrollX = () => Math.max(0, TOTAL_DAYS * CELL_W - gridWrap.clientWidth);
+const maxScrollY = () => Math.max(0, state.people.length - Math.floor(gridWrap.clientHeight / CELL_H));
+
+hslider.addEventListener('input', () => {
+  state.scrollX = Math.round((hslider.value / 100) * maxScrollX());
+  applyScrollX();
+  renderGrid();
+  updateScrollLabel();
+});
+
+$('vup').addEventListener('click',   () => { state.scrollY = Math.max(0, state.scrollY - 1); renderPeople(); renderGrid(); renderTasks(); });
+$('vdown').addEventListener('click', () => { state.scrollY = Math.min(maxScrollY(), state.scrollY + 1); renderPeople(); renderGrid(); renderTasks(); });
+
+$('app').addEventListener('wheel', e => {
+  e.preventDefault();
+  const dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : 0;
+  const dy = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : 0;
+  if (dx) {
+    state.scrollX = Math.max(0, Math.min(maxScrollX(), state.scrollX + dx));
+    hslider.value = maxScrollX() > 0 ? (state.scrollX / maxScrollX()) * 100 : 0;
+    applyScrollX(); renderGrid(); updateScrollLabel();
+  }
+  if (dy) {
+    if (dy > 0) state.scrollY = Math.min(maxScrollY(), state.scrollY + 1);
+    else        state.scrollY = Math.max(0, state.scrollY - 1);
+    renderPeople(); renderGrid(); renderTasks();
+  }
+}, { passive: false });
+
+/* ═══════════════════════════════════════
+   DRAGGABLE MODALS
+═══════════════════════════════════════ */
+function makeDraggable(modalId, handleId) {
+  const modal  = $(modalId);
+  const handle = $(handleId);
+  let dragging = false, ox = 0, oy = 0;
+  handle.addEventListener('mousedown', e => {
+    dragging = true;
+    const r = modal.getBoundingClientRect();
+    ox = e.clientX - r.left;
+    oy = e.clientY - r.top;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const ar = $('app').getBoundingClientRect();
+    let nx = e.clientX - ar.left - ox;
+    let ny = e.clientY - ar.top  - oy;
+    nx = Math.max(0, Math.min(1200 - modal.offsetWidth,  nx));
+    ny = Math.max(0, Math.min(560 - modal.offsetHeight, ny));
+    modal.style.left = nx + 'px';
+    modal.style.top  = ny + 'px';
+  });
+  document.addEventListener('mouseup', () => { dragging = false; });
+}
+
+makeDraggable('taskModal',           'taskModalTitle');
+makeDraggable('personModal',         'personModalTitle');
+makeDraggable('dateModal',           'dateModalTitle');
+makeDraggable('conflictModal',       'conflictModalTitle');
+makeDraggable('projectSettingsModal','projectSettingsTitle');
+makeDraggable('addPersonModal',      'addPersonModalTitle');
+makeDraggable('saveTeamModal',       'saveTeamModalTitle');
+
+/* ── Project Settings modal ── */
+function openProjectSettings() {
+  const allTasks = state.tasks;
+  const fmt = d => offsetToDate(d).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const fmtShort = d => offsetToDate(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+  if (allTasks.length) {
+    const minD = Math.min(...allTasks.map(t => t.fromDay));
+    const maxD = Math.max(...allTasks.map(t => t.toDay));
+    $('ps_start').textContent = fmt(minD);
+    $('ps_end').textContent   = fmt(maxD);
+    const totalDays = maxD - minD;
+    const weeks = Math.round(totalDays / 7);
+    $('ps_dur').textContent = weeks + ' weeks';
+  } else {
+    $('ps_start').textContent = '—';
+    $('ps_end').textContent   = '—';
+    $('ps_dur').textContent   = '—';
+  }
+  $('ps_res').textContent = state.people.length + (state.people.length === 1 ? ' person' : ' people');
+
+  // Milestones list
+  const msEntries = Object.entries(state.milestones)
+    .filter(([, ms]) => ms && ms.name)
+    .sort(([, a], [, b]) => (a.date || '').localeCompare(b.date || ''));
+
+  const container = $('ps_milestones');
+  if (!msEntries.length) {
+    container.innerHTML = '<div style="color:#999;font-style:italic;font-size:11px;">No milestones defined.</div>';
+  } else {
+    container.innerHTML = msEntries.map(([key, ms]) => {
+      const dateStr = ms.date || isoDate(weekStart(parseInt(key)));
+      const d = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      return `<div style="display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px solid #eee;">
+        <span style="font-size:10px;color:#888;white-space:nowrap;width:90px;flex-shrink:0;">${d}</span>
+        <span style="font-weight:bold;flex:1;">${ms.name}</span>
+        ${ms.notes ? `<span style="font-size:10px;color:#666;flex:1.5;">${ms.notes}</span>` : ''}
+        <button data-key="${key}" style="font-size:9px;padding:1px 7px;cursor:pointer;background:#e8eef6;border:1px solid #b0c4de;border-radius:3px;color:#1a3a6c;flex-shrink:0;">Edit</button>
+      </div>`;
+    }).join('');
+    container.querySelectorAll('button[data-key]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        closeAll();
+        openDateModal(parseInt(btn.dataset.key));
+      });
+    });
+  }
+
+  showModal('projectSettingsModal');
+}
+
+$('projectSettingsBtn').addEventListener('click', openProjectSettings);
+$('closeProjectSettings').addEventListener('click', closeAll);
+$('closeProjectSettingsBtn').addEventListener('click', closeAll);
+
+/* ═══════════════════════════════════════
+   RESIZE
+═══════════════════════════════════════ */
+new ResizeObserver(() => { renderGrid(); renderTasks(); }).observe(gridWrap);
+
+/* ── Auto-scroll to today on load ── */
+function scrollToToday() {
+  const todayPx = dayOffset(new Date()) * CELL_W;
+  state.scrollX = Math.max(0, todayPx - 80);
+  hslider.value = maxScrollX() > 0 ? (state.scrollX / maxScrollX()) * 100 : 0;
+  $('jumpDate').value = isoDate(new Date());
+  applyScrollX();
+}
+
+/* ═══════════════════════════════════════
+   PERSIST — Electron file I/O
+═══════════════════════════════════════ */
+let unsavedChanges = false;
+
+function setStatus(msg, cls) {
+  const el = $('save-status');
+  el.textContent = msg;
+  el.className = cls || '';
+}
+
+function markDirty() {
+  if (!unsavedChanges) {
+    unsavedChanges = true;
+    setStatus('● Unsaved changes', 'dirty');
+    if (window.electronAPI) window.electronAPI.setDirty(true);
+  }
+}
+
+function markClean() {
+  unsavedChanges = false;
+  setStatus('Saved', 'saved');
+  if (window.electronAPI) window.electronAPI.setDirty(false);
+  setTimeout(() => { if (!unsavedChanges) setStatus(''); }, 2500);
+}
+
+// ── Format a log line: "Field: old → new" into styled HTML ──
+function formatLogLine(line) {
+  // Match "Label: value → value" pattern
+  const m = line.match(/^([^:]+):\s*(.+?)\s*→\s*(.+)$/);
+  if (m) {
+    return `<span class="field">${m[1]}:</span> ${m[2]}<span class="arrow">→</span>${m[3]}`;
+  }
+  return line;
+}
+
+// ── About modal ──
+$('info-btn').addEventListener('click', () => $('about-overlay').classList.add('open'));
+$('about-close').addEventListener('click', () => $('about-overlay').classList.remove('open'));
+$('about-overlay').addEventListener('click', e => { if (e.target === $('about-overlay')) $('about-overlay').classList.remove('open'); });
+
+// ── Close handling — main process shows a native dialog if dirty ──
+if (window.electronAPI) {
+  window.electronAPI.onSaveAndQuit(async () => {
+    // If team roster was changed, ask whether to save it as a team file first
+    if (teamDirty && state.people.length > 0) {
+      const name = prompt(`Team roster has changed.\n\nSave as team file? Enter a name (or cancel to skip):`, currentTeamLabel || '');
+      if (name && name.trim()) await doSaveTeam(name.trim());
+    }
+    await saveToDisk();
+    window.electronAPI.saveComplete();
+  });
+}
+
+/* ── Launch screen ── */
+async function showLaunchScreen() {
+  $('launch-back-wrap').style.display = currentFile ? '' : 'none';
+  $('launch-screen').classList.remove('hidden');
+  const list = $('launch-project-list');
+  list.innerHTML = '';
+  let selected = null;
+
+  const result = window.electronAPI ? await window.electronAPI.listProjects() : [];
+  const projects = Array.isArray(result) ? result : [];
+
+  if (!Array.isArray(result) && result?.error) {
+    list.innerHTML = `<div id="launch-empty" style="color:#c44;font-size:11px;">Error reading data folder:<br><code>${result.error}</code><br><br>Folder: <code>${result.dataDir}</code></div>`;
+    return;
+  }
+
+  if (!projects.length) {
+    const api = window.electronAPI;
+    const dir = api ? await api.getDataDir() : '(electronAPI not available)';
+    list.innerHTML = `<div id="launch-empty" style="font-size:11px;line-height:1.6;">No projects found.<br><span style="color:#888;">Looking in:</span><br><code style="font-size:10px;word-break:break-all;">${dir}</code></div>`;
+    return;
+  }
+
+  const active   = projects.filter(p => !p.archived);
+  const archived = projects.filter(p =>  p.archived);
+
+  let selectedArchived = false;
+
+  function addItem(p) {
+    const item = document.createElement('div');
+    item.className = 'project-item' + (p.archived ? ' archived-item' : '');
+    const label = p.label.replace(/\b\w/g, c => c.toUpperCase());
+    const icon  = p.archived ? '📦' : '📋';
+    const archiveBtnLabel = p.archived ? '↩ Restore' : '📦 Archive';
+
+    item.innerHTML = `<span class="project-icon">${icon}</span><span style="flex:1">${label}</span><div style="display:flex;gap:6px;margin-left:8px;"><button class="row-btn archive-btn">${archiveBtnLabel}</button></div>`;
+
+    item.addEventListener('click', async e => {
+      if (e.target.closest('.archive-btn')) return;
+      selected = p.file; selectedArchived = p.archived;
+      await openSelected();
+    });
+
+    const archiveBtn = item.querySelector('.archive-btn');
+    archiveBtn.addEventListener('click', async e => {
+      e.stopPropagation();
+      if (p.archived) {
+        await window.electronAPI.unarchiveProject(p.file);
+      } else {
+        await window.electronAPI.archiveProject(p.file);
+      }
+      showLaunchScreen();
+    });
+
+    list.appendChild(item);
+  }
+
+  if (active.length) {
+    active.forEach(addItem);
+  }
+  if (archived.length) {
+    const sep = document.createElement('div');
+    sep.className = 'launch-section-label';
+    sep.textContent = 'Archived';
+    list.appendChild(sep);
+    archived.forEach(addItem);
+  }
+
+  async function openSelected() {
+    if (!selected) return;
+    $('launch-actions').style.display = 'none';
+    const loadingEl = $('launch-loading');
+    $('launch-loading-label').textContent = 'Loading…';
+    loadingEl.classList.add('visible');
+    const data = await window.electronAPI.loadProject(selected, selectedArchived);
+    loadingEl.classList.remove('visible');
+    $('launch-actions').style.display = 'flex';
+    if (data && data.people && data.tasks) loadProject(selected, data);
+  }
+
+}
+
+function hideLaunchScreen() {
+  $('launch-screen').classList.add('hidden');
+}
+
+async function createNewProject() {
+  const name = $('launch-new-input').value.trim();
+  if (!name) { $('launch-new-input').focus(); return; }
+  const file = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '.json';
+  const empty = { people: [], tasks: [], milestones: {} };
+  await window.electronAPI.saveProject(file, empty);
+  $('launch-new-input').value = '';
+  await loadProject(file, empty);
+}
+$('launch-create-btn').addEventListener('click', createNewProject);
+$('launch-new-input').addEventListener('keydown', e => { if (e.key === 'Enter') createNewProject(); });
+$('launch-back-btn').addEventListener('click', hideLaunchScreen);
+
+$('launch-browse-btn').addEventListener('click', async () => {
+  const data = await window.electronAPI.openFileDialog();
+  if (!data || !data.people || !data.tasks) return;
+  // treat as unnamed — save will be disabled; user can use Save As in future
+  currentFile = 'timeline-data.json';
+  await loadProject(currentFile, data);
+});
+
+let currentFile = null;  // filename currently open (e.g. "project-x.json")
+
+async function saveToDisk() {
+  if (!currentFile) return;
+  const data = { people: state.people, tasks: state.tasks, milestones: state.milestones };
+  try {
+    const ok = await window.electronAPI.saveProject(currentFile, data);
+    if (ok) markClean();
+    else setStatus('Save failed', 'dirty');
+  } catch(e) { setStatus('Save failed', 'dirty'); }
+}
+
+async function loadProject(file, data) {
+  currentFile          = file;
+  state.people         = data.people;
+  state.tasks          = data.tasks;
+  state.milestones     = data.milestones || {};
+  hideLaunchScreen();
+  scrollToToday();
+  render();
+  markClean();
+  // Update title bar
+  const label = file.replace('.json', '').replace(/-/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+  document.title = 'Timeline — ' + label;
+  $('project-title').textContent = '— ' + label;
+}
+
+
+/* ── Save button + Cmd+S ── */
+$('openBtn').addEventListener('click', () => showLaunchScreen());
+
+$('saveBtn').addEventListener('click', saveToDisk);
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+    e.preventDefault();
+    saveToDisk();
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+    e.preventDefault();
+    undo();
+  }
+  if ((e.metaKey || e.ctrlKey) && (e.key === '=' || e.key === '+')) {
+    e.preventDefault();
+    $('zoomInBtn').click();
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key === '-') {
+    e.preventDefault();
+    $('zoomOutBtn').click();
+  }
+});
+
+
+/* ── Save Team ── */
+$('saveTeamBtn').addEventListener('click', () => {
+  $('st_name').value = currentTeamLabel || '';
+  showModal('saveTeamModal');
+  setTimeout(() => { $('st_name').focus(); $('st_name').select(); }, 50);
+});
+
+async function doSaveTeam(raw) {
+  const file = raw.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '.json';
+  const members = state.people.map(p => ({ name: p.name, role: p.role || '' }));
+  const ok = window.electronAPI ? await window.electronAPI.saveTeam(file, members) : false;
+  if (ok) {
+    currentTeamFile  = file;
+    currentTeamLabel = raw;
+    clearTeamDirty();
+    setStatus(`Team "${raw}" saved`, 'saved');
+  } else {
+    setStatus('Team save failed', 'dirty');
+  }
+  return ok;
+}
+
+$('confirmSaveTeam').addEventListener('click', async () => {
+  const raw = $('st_name').value.trim();
+  if (!raw) { $('st_name').focus(); return; }
+  await doSaveTeam(raw);
+  closeAll();
+});
+
+$('cancelSaveTeam').addEventListener('click', closeAll);
+$('closeSaveTeam').addEventListener('click', closeAll);
+
+/* ═══════════════════════════════════════
+   INIT
+═══════════════════════════════════════ */
+(async () => {
+  render();
+  markClean();
+  showLaunchScreen();
+})();
+/* ── PDF report builder ── */
+function buildPdfReportHtml(projectLabel, exportDate, rangeStr) {
+  const allTasks = state.tasks;
+  const fmtLong = d => offsetToDate(d).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+  let startStr = '—', endStr = '—', durStr = '—';
+  if (allTasks.length) {
+    const minD = Math.min(...allTasks.map(t => t.fromDay));
+    const maxD = Math.max(...allTasks.map(t => t.toDay));
+    startStr = fmtLong(minD);
+    endStr   = fmtLong(maxD);
+    durStr   = Math.round((maxD - minD) / 7) + ' weeks';
+  }
+
+  const statCell = (label, value) =>
+    `<div style="flex:1;padding:10px 14px;background:#f0f4fa;border-radius:5px;border:1px solid #d0daea;">
+      <div style="font-size:8px;color:#888;letter-spacing:0.5px;margin-bottom:4px;text-transform:uppercase;">${label}</div>
+      <div style="font-size:13px;font-weight:bold;color:#1a3a6c;">${value}</div>
+    </div>`;
+
+  let html = `
+    <h1 style="font-size:22px;font-weight:bold;margin-bottom:2px;">${projectLabel}</h1>
+    <div style="font-size:10px;color:#999;margin-bottom:14px;">Exported: ${exportDate}</div>
+    <div style="display:flex;gap:10px;margin-bottom:22px;border-bottom:2px solid #1a3a6c;padding-bottom:16px;">
+      ${statCell('Start Date', startStr)}
+      ${statCell('End Date', endStr)}
+      ${statCell('Duration', durStr)}
+      ${statCell('Resources', state.people.length + (state.people.length === 1 ? ' person' : ' people'))}
+      ${statCell('Tasks', allTasks.length)}
+    </div>`;
+
+  // ── Milestones ──
+  const msEntries = Object.entries(state.milestones)
+    .filter(([, ms]) => ms && ms.name)
+    .sort(([, a], [, b]) => (a.date || '').localeCompare(b.date || ''));
+  html += `<h2 style="font-size:14px;font-weight:bold;color:#1a3a6c;border-bottom:1.5px solid #ccc;padding-bottom:4px;margin:0 0 8px;">Milestones</h2>`;
+  if (!msEntries.length) {
+    html += `<p style="color:#999;font-style:italic;font-size:11px;margin-bottom:20px;">No milestones defined.</p>`;
+  } else {
+    html += `<table style="width:100%;border-collapse:collapse;margin-bottom:24px;font-size:11px;">
+      <tr style="background:#e8eef6;"><th style="text-align:left;padding:5px 8px;border:1px solid #ccc;">Date</th><th style="text-align:left;padding:5px 8px;border:1px solid #ccc;">Name</th><th style="text-align:left;padding:5px 8px;border:1px solid #ccc;">Notes</th></tr>`;
+    msEntries.forEach(([key, ms], i) => {
+      const dateStr = ms.date || isoDate(weekStart(parseInt(key)));
+      const d = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+      const bg = i % 2 === 1 ? 'background:#f7f9fc;' : '';
+      html += `<tr style="${bg}"><td style="padding:4px 8px;border:1px solid #ddd;white-space:nowrap;">${d}</td><td style="padding:4px 8px;border:1px solid #ddd;">${ms.name}</td><td style="padding:4px 8px;border:1px solid #ddd;">${ms.notes || ''}</td></tr>`;
+    });
+    html += `</table>`;
+  }
+
+  // ── Resource summary ──
+  html += `<h2 style="font-size:14px;font-weight:bold;color:#1a3a6c;border-bottom:1.5px solid #ccc;padding-bottom:4px;margin:0 0 8px;">Resource Summary</h2>`;
+  if (!state.people.length) {
+    html += `<p style="color:#999;font-style:italic;font-size:11px;">No resources assigned.</p>`;
+  } else {
+    html += `<table style="width:100%;border-collapse:collapse;font-size:11px;">
+      <tr style="background:#e8eef6;">
+        <th style="text-align:left;padding:5px 8px;border:1px solid #ccc;">Resource</th>
+        <th style="text-align:left;padding:5px 8px;border:1px solid #ccc;">Task</th>
+        <th style="text-align:left;padding:5px 8px;border:1px solid #ccc;">Start</th>
+        <th style="text-align:left;padding:5px 8px;border:1px solid #ccc;">End</th>
+        <th style="text-align:left;padding:5px 8px;border:1px solid #ccc;">Weeks</th>
+      </tr>`;
+    let rowIdx = 0;
+    state.people.forEach(person => {
+      const tasks = allTasks.filter(t => t.personId === person.id)
+        .sort((a, b) => a.fromDay - b.fromDay);
+      if (!tasks.length) {
+        const bg = rowIdx++ % 2 === 1 ? 'background:#f7f9fc;' : '';
+        html += `<tr style="${bg}"><td style="padding:4px 8px;border:1px solid #ddd;font-weight:bold;">${person.name}</td><td colspan="4" style="padding:4px 8px;border:1px solid #ddd;color:#999;font-style:italic;">No tasks assigned</td></tr>`;
+      } else {
+        tasks.forEach((t, i) => {
+          const bg = rowIdx++ % 2 === 1 ? 'background:#f7f9fc;' : '';
+          const startDate = offsetToDate(t.fromDay).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+          const endDate   = offsetToDate(t.toDay).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+          const weeks     = Math.round((t.toDay - t.fromDay) / 7 * 10) / 10;
+          html += `<tr style="${bg}">
+            <td style="padding:4px 8px;border:1px solid #ddd;font-weight:${i===0?'bold':'normal'};color:${i===0?'#000':'#aaa'};">${i===0 ? person.name : '↳'}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${t.name}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;white-space:nowrap;">${startDate}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;white-space:nowrap;">${endDate}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${weeks}</td>
+          </tr>`;
+        });
+      }
+    });
+    html += `</table>`;
+  }
+  return html;
+}
+
+$('exportBtn').addEventListener('click', async () => {
+  if (!window.electronAPI) return;
+  setStatus('Preparing export…', '');
+
+  const projectLabel = currentFile
+    ? currentFile.replace('.json','').replace(/-/g,' ').replace(/\b\w/g, c => c.toUpperCase())
+    : 'Timeline';
+  const now = new Date();
+  const exportDate = now.toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+
+  const allTasks = state.tasks;
+  let rangeStr = '—';
+  if (allTasks.length) {
+    const starts = allTasks.map(t => t.fromDay);
+    const ends   = allTasks.map(t => t.toDay);
+    const fmt = d => offsetToDate(d).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+    rangeStr = fmt(Math.min(...starts)) + ' – ' + fmt(Math.max(...ends));
+  }
+
+  // Crop rect: just the header + people rows, full width
+  const headerEl = document.getElementById('header');
+  const hRect = headerEl.getBoundingClientRect();
+  const cropRect = {
+    x: 0,
+    y: Math.floor(hRect.top),
+    width:  window.innerWidth,
+    height: Math.ceil(hRect.height + state.people.length * CELL_H + 2),
+  };
+
+  const reportHtml = buildPdfReportHtml(projectLabel, exportDate, rangeStr);
+  const filename = currentFile
+    ? currentFile.replace('.json', '') + '-export.pdf'
+    : 'timeline-export.pdf';
+
+  const ok = await window.electronAPI.exportPdf(cropRect, projectLabel, reportHtml, filename);
+  if (ok) setStatus('Exported!', 'saved');
+  else if (ok !== null) setStatus('Export cancelled', '');
+});
+</script>
+
+<div id="pdf-report"></div>
+
+</body>
+</html>

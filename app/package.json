@@ -1,0 +1,14 @@
+{
+  "name": "timeline",
+  "version": "1.0.0",
+  "description": "Team resource planner",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-packager . Timeline --platform=darwin --overwrite --icon=icon.icns --asar; rm -rf ../Timeline.app && cp -R Timeline-darwin-arm64/Timeline.app ../Timeline.app && xattr -cr ../Timeline.app && echo 'App updated'"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-packager": "^17.1.2"
+  }
+}
