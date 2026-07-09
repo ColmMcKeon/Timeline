@@ -1094,6 +1094,31 @@
           <label style="padding-top:2px;">Notes:</label>
           <textarea id="pm_notes"></textarea>
         </div>
+        <!-- Out of Office section -->
+        <div style="border-top:1px solid #e0e0e0;margin-top:4px;padding-top:10px;">
+          <div style="font-size:9px;color:#888;letter-spacing:0.4px;margin-bottom:6px;">OUT OF OFFICE</div>
+          <div id="pm_ooo_list" style="margin-bottom:6px;display:flex;flex-direction:column;gap:4px;"></div>
+          <div id="pm_ooo_add" style="display:none;background:#f7f7f7;border:1px solid #ddd;border-radius:4px;padding:8px;margin-bottom:4px;">
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+              <select id="pm_ooo_type" style="font-size:11px;padding:2px 4px;border:1px solid #ccc;border-radius:3px;background:#fff;">
+                <option value="PTO">PTO</option>
+                <option value="Event">Event</option>
+              </select>
+              <input type="text" id="pm_ooo_label" placeholder="Label (optional)" style="flex:1;font-size:11px;padding:2px 5px;border:1px solid #ccc;border-radius:3px;">
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <label style="font-size:11px;color:#555;white-space:nowrap;">From</label>
+              <input type="date" id="pm_ooo_from" style="font-size:11px;padding:2px;border:1px solid #ccc;border-radius:3px;flex:1;">
+              <label style="font-size:11px;color:#555;white-space:nowrap;">To</label>
+              <input type="date" id="pm_ooo_to" style="font-size:11px;padding:2px;border:1px solid #ccc;border-radius:3px;flex:1;">
+            </div>
+            <div style="display:flex;gap:6px;margin-top:7px;justify-content:flex-end;">
+              <button id="pm_ooo_cancel" style="font-size:11px;padding:2px 10px;">Cancel</button>
+              <button id="pm_ooo_save" class="primary" style="font-size:11px;padding:2px 10px;">Add</button>
+            </div>
+          </div>
+          <button id="pm_ooo_add_btn" style="font-size:11px;padding:2px 10px;color:#555;">+ Add OOO</button>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="del-btn" id="deletePersonBtn">Remove</button>
@@ -1272,8 +1297,10 @@ const WEEK_MS = DAY_MS * 7;
 
 // Timeline spans: current year, from Jan 1
 function startOfYear() {
-  const d = new Date();
-  return new Date(d.getFullYear(), 0, 1);
+  const jan1 = new Date(new Date().getFullYear(), 0, 1);
+  const dow = jan1.getDay(); // 0=Sun,1=Mon,...,6=Sat
+  const daysBack = dow === 0 ? 6 : dow - 1; // days back to Monday
+  return new Date(jan1.getTime() - daysBack * DAY_MS);
 }
 
 const ORIGIN = startOfYear();   // day-0 of the timeline
@@ -1290,7 +1317,7 @@ function offsetToDate(days) {
 }
 
 function fmtDate(d) {
-  // d is a Date object
+  if (!d || isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('en-US', {month:'short', day:'numeric'});
 }
 
@@ -1677,17 +1704,30 @@ function renderTasks() {
 
     const bar = document.createElement('div');
     bar.className = 'task-bar';
-    bar.style.cssText =
-      `left:${x1+2}px;top:${y+3}px;width:${barW}px;height:${CELL_H-6}px;background:${task.color}`;
 
-    if (task.pct > 0) {
+    if (task.ooo) {
+      const typeColor = task.oooType === 'Event' ? '#7b68ee' : '#e07b39';
+      bar.style.cssText =
+        `left:${x1+2}px;top:${y+3}px;width:${barW}px;height:${CELL_H-6}px;` +
+        `background:repeating-linear-gradient(45deg,${typeColor}22,${typeColor}22 4px,${typeColor}44 4px,${typeColor}44 8px);` +
+        `border:1.5px solid ${typeColor};border-radius:3px;box-sizing:border-box;`;
+      const badge = document.createElement('span');
+      badge.style.cssText = `font-size:8px;font-weight:700;color:${typeColor};margin-right:3px;flex-shrink:0;pointer-events:none;`;
+      badge.textContent = task.oooType || 'PTO';
+      bar.appendChild(badge);
+    } else {
+      bar.style.cssText =
+        `left:${x1+2}px;top:${y+3}px;width:${barW}px;height:${CELL_H-6}px;background:${task.color}`;
+    }
+
+    if (!task.ooo && task.pct > 0) {
       const fill = document.createElement('div');
       fill.className = 'progress-fill';
       fill.style.width = task.pct + '%';
       bar.appendChild(fill);
     }
 
-    if (task.milestone != null && state.milestones[task.milestone]) {
+    if (!task.ooo && task.milestone != null && state.milestones[task.milestone]) {
       const pin = document.createElement('span');
       pin.textContent = '🔒';
       pin.style.cssText = 'font-size:8px;margin-right:3px;opacity:0.85;pointer-events:none;flex-shrink:0;';
@@ -1697,6 +1737,7 @@ function renderTasks() {
     const lbl = document.createElement('span');
     lbl.className = 'task-label';
     lbl.textContent = task.name;
+    if (task.ooo) lbl.style.color = '#555';
     bar.appendChild(lbl);
 
     bar.dataset.tid = task.id;
@@ -1776,8 +1817,8 @@ document.addEventListener('mousemove', e => {
     drag.barEl.style.left = (newFromDay * CELL_W + 2) + 'px';
   }
 
-  // Vertical — which person row is the cursor over?
-  const rowDelta  = Math.round(pxDeltaY / CELL_H);
+  // Vertical — which person row is the cursor over? OOO tasks are locked to their row.
+  const rowDelta  = drag.task.ooo ? 0 : Math.round(pxDeltaY / CELL_H);
   const targetIdx = Math.max(0, Math.min(state.people.length - 1, drag.origPersonIdx + rowDelta));
   if (targetIdx !== drag.targetPersonIdx) {
     drag.targetPersonIdx = targetIdx;
@@ -1812,7 +1853,8 @@ document.addEventListener('mouseup', e => {
   dropRowEl.style.display = 'none';
 
   if (!active) {
-    openTaskModal(task.id);
+    if (task.ooo) openPersonModal(task.personId);
+    else openTaskModal(task.id);
     return;
   }
 
@@ -2096,6 +2138,33 @@ $('mw-ok').addEventListener('click', closeMilestoneWarning);
 $('mw-backdrop').addEventListener('click', closeMilestoneWarning);
 
 /* ── Person modal ── */
+function renderOooList(pid) {
+  const myOoo = state.tasks.filter(t => t.personId === pid && t.ooo);
+  const list = $('pm_ooo_list');
+  list.innerHTML = '';
+  myOoo.sort((a, b) => a.fromDay - b.fromDay).forEach(t => {
+    const from = fmtDate(offsetToDate(t.fromDay));
+    const to   = fmtDate(offsetToDate(t.toDay));
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:11px;background:#fff3e0;border:1px solid #e8c97a;border-radius:3px;padding:3px 7px;';
+    row.innerHTML = `
+      <span style="font-size:9px;font-weight:600;color:#b07400;background:#ffe0a0;border-radius:2px;padding:1px 4px;">${t.oooType||'PTO'}</span>
+      <span style="flex:1;color:#555;">${t.name ? t.name + ' · ' : ''}${from} – ${to}</span>
+      <span data-ooo-del="${t.id}" style="cursor:pointer;color:#c00;font-size:13px;line-height:1;" title="Remove">×</span>`;
+    list.appendChild(row);
+  });
+  list.querySelectorAll('[data-ooo-del]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const delId = btn.getAttribute('data-ooo-del');
+      saveUndo();
+      state.tasks = state.tasks.filter(t => t.id !== delId);
+      markDirty();
+      renderOooList(pid);
+      render();
+    });
+  });
+}
+
 function openPersonModal(pid) {
   const p = state.people.find(x => x.id === pid);
   if (!p) return;
@@ -2103,7 +2172,7 @@ function openPersonModal(pid) {
   $('pm_name').value  = p.name;
   $('pm_notes').value = p.notes;
 
-  const myTasks = state.tasks.filter(t => t.personId === pid);
+  const myTasks = state.tasks.filter(t => t.personId === pid && !t.ooo);
   $('pm_tasks').innerHTML = myTasks.length
     ? myTasks.map(t => {
         const from = fmtDate(offsetToDate(t.fromDay));
@@ -2111,6 +2180,14 @@ function openPersonModal(pid) {
         return `• ${t.name} <span style="color:#888">(${from} – ${to})</span>`;
       }).join('<br>')
     : '<em style="color:#999">No assignments</em>';
+
+  $('pm_ooo_add').style.display = 'none';
+  $('pm_ooo_add_btn').style.display = '';
+  $('pm_ooo_label').value = '';
+  $('pm_ooo_type').value  = 'PTO';
+  $('pm_ooo_from').value  = isoDate(new Date());
+  $('pm_ooo_to').value    = isoDate(new Date());
+  renderOooList(pid);
 
   showModal('personModal');
 }
@@ -2136,6 +2213,45 @@ $('deletePersonBtn').addEventListener('click', () => {
 });
 $('cancelPerson').addEventListener('click', closeAll);
 $('closePerson').addEventListener('click', closeAll);
+
+$('pm_ooo_add_btn').addEventListener('click', () => {
+  $('pm_ooo_add').style.display = '';
+  $('pm_ooo_add_btn').style.display = 'none';
+});
+$('pm_ooo_cancel').addEventListener('click', () => {
+  $('pm_ooo_add').style.display = 'none';
+  $('pm_ooo_add_btn').style.display = '';
+});
+$('pm_ooo_save').addEventListener('click', () => {
+  const pid = state.editing?.id;
+  if (!pid) return;
+  const fromVal = $('pm_ooo_from').value;
+  const toVal   = $('pm_ooo_to').value;
+  if (!fromVal || !toVal) { alert('Please select both a start and end date.'); return; }
+  const fromDay = dayOffset(parseIso(fromVal));
+  const toDay   = Math.max(fromDay, dayOffset(parseIso(toVal)));
+  if (isNaN(fromDay) || isNaN(toDay)) { alert('Invalid dates — please check the start and end dates.'); return; }
+  const label   = $('pm_ooo_label').value.trim();
+  const type    = $('pm_ooo_type').value;
+  saveUndo();
+  state.tasks.push({
+    id:       'ooo_' + Date.now(),
+    personId: pid,
+    name:     label,
+    fromDay, toDay,
+    color:    '#b0b0b0',
+    pct:      0,
+    milestone: null,
+    ooo:      true,
+    oooType:  type,
+  });
+  markDirty();
+  $('pm_ooo_add').style.display = 'none';
+  $('pm_ooo_add_btn').style.display = '';
+  $('pm_ooo_label').value = '';
+  renderOooList(pid);
+  render();
+});
 
 /* ── Date modal ── */
 function renderMilestoneHistory(ms) {
@@ -2871,7 +2987,7 @@ let currentFile = null;  // filename currently open (e.g. "project-x.json")
 
 async function saveToDisk() {
   if (!currentFile) return;
-  const data = { people: state.people, tasks: state.tasks, milestones: state.milestones };
+  const data = { schemaVersion: 1, people: state.people, tasks: state.tasks, milestones: state.milestones };
   try {
     const ok = await window.electronAPI.saveProject(currentFile, data);
     if (ok) markClean();
@@ -2880,6 +2996,17 @@ async function saveToDisk() {
 }
 
 async function loadProject(file, data) {
+  // Migrate data saved before schemaVersion 1 (ORIGIN was Jan 1; now ORIGIN is Mon before Jan 1)
+  if (!data.schemaVersion) {
+    const jan1 = new Date(new Date().getFullYear(), 0, 1);
+    const originOffset = Math.round((jan1.getTime() - ORIGIN.getTime()) / DAY_MS); // e.g. 3 for 2026
+    if (originOffset > 0) {
+      (data.tasks || []).forEach(t => {
+        t.fromDay += originOffset;
+        t.toDay   += originOffset;
+      });
+    }
+  }
   currentFile          = file;
   state.people         = data.people;
   state.tasks          = data.tasks;
