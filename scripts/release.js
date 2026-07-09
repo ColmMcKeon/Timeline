@@ -15,7 +15,7 @@ const REPO     = 'ColmMcKeon/Timeline';
 // ── Get token from git remote ──
 function getToken() {
   const url = execSync('git remote get-url origin', { cwd: ROOT }).toString().trim();
-  const m = url.match(/:([^@]+)@github/);
+  const m = url.match(/:([^:@]+)@github/);
   if (!m) { console.error('Could not extract token from git remote URL'); process.exit(1); }
   return m[1];
 }
