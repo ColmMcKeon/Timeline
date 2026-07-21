@@ -2,11 +2,14 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs   = require('fs');
 
-// Dev: app/../data  |  Packaged: Timeline.app/../data (next to the .app in OneDrive)
+// Dev: app/../data  |  Packaged: sibling "data" folder if it already exists (Colm's OneDrive
+// repo copy), else Documents/Electron App Data/Timeline/data for everyone else's install.
 // xattr -cr in build script prevents macOS App Translocation so this path stays correct
-const DATA_DIR  = app.isPackaged
-  ? path.join(process.resourcesPath, '..', '..', '..', 'data')
-  : path.join(__dirname, '..', 'data');
+const SIBLING_DATA = path.join(process.resourcesPath, '..', '..', '..', 'data');
+const SHARED_APP_DATA = path.join(app.getPath('documents'), 'Electron App Data', 'Timeline', 'data');
+const DATA_DIR  = !app.isPackaged
+  ? path.join(__dirname, '..', 'data')
+  : fs.existsSync(SIBLING_DATA) ? SIBLING_DATA : SHARED_APP_DATA;
 const DATA_FILE   = path.join(DATA_DIR, 'timeline-data.json');
 const ARCHIVE_DIR = path.join(DATA_DIR, 'archive');
 
@@ -113,9 +116,11 @@ ipcMain.handle('list-projects', () => {
   }
 });
 
-const TEAM_DIR = app.isPackaged
-  ? path.join(process.resourcesPath, '..', '..', '..', 'team')
-  : path.join(__dirname, '..', 'team');
+const SIBLING_TEAM = path.join(process.resourcesPath, '..', '..', '..', 'team');
+const SHARED_TEAM_DATA = path.join(app.getPath('documents'), 'Electron App Data', 'Timeline', 'team');
+const TEAM_DIR = !app.isPackaged
+  ? path.join(__dirname, '..', 'team')
+  : fs.existsSync(SIBLING_TEAM) ? SIBLING_TEAM : SHARED_TEAM_DATA;
 
 ipcMain.handle('list-teams', () => {
   try {
