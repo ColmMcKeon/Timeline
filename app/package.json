@@ -5,7 +5,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-packager . Timeline --platform=darwin --overwrite --icon=icon.icns --asar; rm -rf ../Timeline.app && cp -R Timeline-darwin-arm64/Timeline.app ../Timeline.app && xattr -cr ../Timeline.app && echo 'App updated'",
+    "build": "electron-packager . Timeline --platform=darwin --overwrite --icon=icon.icns --asar && node scripts/clean-privacy-keys.js Timeline-darwin-arm64/Timeline.app; rm -rf ../Timeline.app && cp -R Timeline-darwin-arm64/Timeline.app ../Timeline.app && xattr -cr ../Timeline.app && echo 'App updated'",
     "push": "cd .. && git add app/main.js app/preload.js app/package.json app/timeline.html && git commit -m 'Update source' && git push && echo 'Pushed to GitHub'",
     "release": "npm run build && node ../scripts/release.js"
   },
